@@ -183,11 +183,52 @@ agg_subjects_paired <- agg_subjects %>%
                        )
 ```
 
+## ggplot Theme
+
+```{r}
+theme_manylabs <- theme_bw() +
+                  theme(
+                        axis.text = element_text(size = 14),
+                        axis.title = element_text(size = 16, family="Arial"),
+                        text = element_text(family="Arial"),
+                        legend.key = element_rect(fill = "navy"),
+                        legend.background = element_rect(fill = "white"),
+                        panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank(),
+                        panel.border = element_blank(),
+                        axis.line = element_line(),
+                        strip.background = element_rect(fill = "white", colour = NA),
+                        strip.text.x = element_text(size = 14, face = "bold", colour = "black")
+                  )
+```
+
 # Hypothesis Tests
 
 ## Overall Preference for IDS v ADS
 
 ```{r}
+ggplot(agg_subjects, aes(x=Condition, y=MeanLogLT)) +
+  geom_boxplot() +
+  theme_manylabs
+
+ggplot(agg_subjects, aes(x=Condition, y=MeanLogLT)) +
+  stat_summary(fun.y='mean', geom='bar') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  theme_manylabs
+  
+ggplot(agg_subjects_paired, aes(x='Overall', y=Diff)) +
+  geom_boxplot() +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  scale_x_discrete('') +
+  theme_manylabs
+
+ggplot(agg_subjects_paired, aes(x='Overall', y=Diff)) +
+  stat_summary(fun.y='mean', geom='bar') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  scale_x_discrete('') +
+  theme_manylabs
+
 t.test(agg_subjects_paired$Diff)
 
 mean(agg_subjects_paired$Diff) / sd(agg_subjects_paired$Diff)
@@ -203,9 +244,27 @@ summary(model)
 drop1(model,~.,test="Chi")
 ```
 
+### Lab Variability
+
+```{r}
+ggplot(agg_subjects_paired, aes(x=Lab, y=Diff)) +
+              stat_summary(fun.y='mean', geom='point') +
+              stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+              geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+              scale_x_discrete('') +
+              coord_flip() +
+              theme_manylabs
+```
+
 ## Does IDS preference change by age?
 
 ```{r}
+ggplot(agg_subjects_paired, aes(x=Age, y=Diff)) +
+  geom_point() +
+  stat_smooth() +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  theme_manylabs
+
 agg_subjects <- agg_subjects %>%
                 mutate(
                   AgeC = Age - mean(Age)
@@ -231,6 +290,12 @@ anova(model,model_2)
 ## Are there trial order effects?
 
 ```{r}
+ggplot(data_clean, aes(x=Trial, y=LogLT, color=Condition)) +
+  stat_summary(fun.y='mean', geom='point') +
+  stat_summary(fun.y='mean', geom='line') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  theme_manylabs
+
 data_clean <- data_clean %>%
                 mutate(
                   TrialC = Trial - mean(Trial),
@@ -249,6 +314,13 @@ drop1(model,~.,test="Chi")
 ### Method
 
 ```{r}
+ggplot(agg_subjects_paired, aes(x=Method, y=Diff)) +
+  stat_summary(fun.y='mean', geom='bar') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  scale_x_discrete('') +
+  theme_manylabs
+
 contrasts(agg_subjects$Method) <- contr.sum(length(unique(agg_subjects$Method)))
 
 model <- lmer(MeanLogLT ~ ConditionC*Method*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
@@ -265,6 +337,13 @@ lstrends(model, ~ Method, var="ConditionC", adjust="none")
 ### Session
 
 ```{r}
+ggplot(agg_subjects_paired, aes(x=Session, y=Diff)) +
+  stat_summary(fun.y='mean', geom='bar') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  scale_x_discrete('') +
+  theme_manylabs
+
 contrasts(agg_subjects$Session) <- contr.sum(length(unique(agg_subjects$Session)))
 
 model <- lmer(MeanLogLT ~ ConditionC*Session*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
@@ -281,6 +360,13 @@ lstrends(model, ~ Session, var="ConditionC", adjust="none")
 ### Native Language
 
 ```{r}
+ggplot(agg_subjects_paired, aes(x=Language, y=Diff)) +
+  stat_summary(fun.y='mean', geom='bar') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  scale_x_discrete('') +
+  theme_manylabs
+
 contrasts(agg_subjects$Language) <- contr.sum(length(unique(agg_subjects$Language)))
 
 model <- lmer(MeanLogLT ~ ConditionC*Language*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
@@ -297,6 +383,13 @@ lstrends(model, ~ Language, var="ConditionC", adjust="none")
 ### Biligualism
 
 ```{r}
+ggplot(agg_subjects_paired, aes(x=Bilingual, y=Diff)) +
+  stat_summary(fun.y='mean', geom='bar') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  scale_x_discrete('') +
+  theme_manylabs
+
 contrasts(agg_subjects$Bilingual) <- contr.sum(length(unique(agg_subjects$Bilingual)))
 
 model <- lmer(MeanLogLT ~ ConditionC*Bilingual*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
