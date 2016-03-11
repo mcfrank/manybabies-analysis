@@ -254,6 +254,24 @@ ggplot(agg_subjects_paired, aes(x=Lab, y=Diff)) +
               scale_x_discrete('') +
               coord_flip() +
               theme_manylabs
+
+model <- lmer(MeanLogLT ~ ConditionC + (1 + ConditionC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+fixed_effect <- fixef(model)[['ConditionC']]
+
+lab_ranefs <- data.frame(
+                Lab = factor(rownames(ranef(model)$Lab), levels=rownames(ranef(model)$Lab)),
+                ConditionRanef = ranef(model)$Lab$ConditionC + fixed_effect
+            )
+
+ggplot(lab_ranefs, aes(x=Lab, y=ConditionRanef, group=Lab)) +
+        geom_point() +
+        geom_errorbar(aes(ymin=fixed_effect, ymax=ConditionRanef), width=.1) +
+        geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+        geom_hline(yintercept=fixed_effect, linetype="solid", alpha=.5) +
+        scale_x_discrete('') +
+        scale_y_continuous('Random Effect') +
+        coord_flip() +
+        theme_manylabs
 ```
 
 ## Does IDS preference change by age?
