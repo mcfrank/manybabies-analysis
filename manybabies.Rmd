@@ -65,12 +65,17 @@ data <- data %>%
           ) %>%
           ungroup() %>%
           mutate(
-            LT = ifelse(Condition == 'IDS', rlnorm(n(),1.5+.LabDiff,.7), rlnorm(n(),1.5,.7)),
-            LT = ifelse(LT > 20, 20, LT)
+            LT = ifelse(Condition == 'IDS', rlnorm(n(),1.5+.LabDiff,.7), rlnorm(n(),1.5,.7))
           ) %>%
           group_by(Subject) %>%
           mutate(
             LT = LT + runif(1,0,.5)
+          ) %>%
+          ungroup() %>%
+          
+          # max 20s looking per trial
+          mutate(
+            LT = ifelse(LT > 20, 20, LT)
           ) %>%
   
           # randomly generate ages
