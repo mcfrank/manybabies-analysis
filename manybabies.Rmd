@@ -1,210 +1,156 @@
 ---
-title: "ManyBabies Analysis"
+title: "ManyBabies Simulated Analysis"
 output:
-  html_document:
-    toc: true
-    theme: united
+html_document:
+  toc: true
+  theme: united
 ---
-
-# Configuration
-
-```{r}
-z_threshold <- 2
-min_trials_per_type <- 4
-```
 
 # Preliminaries
 
 ```{r}
 options(dplyr.width = Inf)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=TRUE)
 
 library(ggplot2)
 library(dplyr)
 library(lme4)
 library(tidyr)
+library(magrittr)
 library(lsmeans)
+library(langcog)
+
+theme_manylabs <- theme_bw() +
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16, family="Arial"),
+        text = element_text(family="Arial"),
+        legend.key = element_rect(fill = "navy"),
+        legend.background = element_rect(fill = "white"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(),
+        strip.background = element_rect(fill = "white", colour = NA),
+        strip.text.x = element_text(size = 14, face = "bold", colour = "black"))
 ```
+
 
 # Simulate Data
 
-```{r}
-data <- expand.grid(
-              Lab = paste0('Lab',1:20),
-              Subject = 1:30,
-              Trial = 1:16
-            )
+Create basics of data.
 
-data <- data %>%
-          mutate(
-            Lab = factor(Lab),
-            Subject = toupper(paste0(Lab,'-',Subject)),
-            Subject = factor(Subject)
-          ) %>%
-  
-          # assign block
-          mutate(
-            Block = ((Trial-1) %/% 4) + 1
-          ) %>%
-  
-          # randomly assign conditions within blocks
-          group_by(Subject,Block) %>%
-          mutate(
-            Condition = sample(c('IDS','IDS','ADS','ADS'))
-          ) %>%
-          ungroup() %>%
-          mutate(
-            Condition = factor(Condition)
-          ) %>%
-  
-          # randomly generate looking times within constraints
-          # do it lab-by-lab and then add some subject attention diffs
-          # for (1) realism and (2) convergence issues
-          group_by(Lab) %>%
-          mutate(
-            .LabDiff = runif(1,0,.5)
-          ) %>%
-          ungroup() %>%
-          mutate(
-            LT = ifelse(Condition == 'IDS', rlnorm(n(),1.5+.LabDiff,.7), rlnorm(n(),1.5,.7))
-          ) %>%
-          group_by(Subject) %>%
-          mutate(
-            LT = LT + runif(1,0,.5)
-          ) %>%
-          ungroup() %>%
-          
-          # max 20s looking per trial
-          mutate(
-            LT = ifelse(LT > 20, 20, LT)
-          ) %>%
-  
-          # randomly generate ages
-          group_by(Lab) %>%
-          mutate(
-            .LabMeanAge = round(runif(1, 3,12))
-          ) %>%
-          ungroup() %>%
-          group_by(Subject) %>%
-          mutate(
-            Age = round(runif(1, .LabMeanAge-.5, .LabMeanAge+.5),2)
-          ) %>%
-          ungroup() %>%
-  
-          # randomly generate method and participant vars (session, language, bilingual)
-          group_by(Lab) %>%
-          mutate(
-            Method = sample(c('HPP','SingleScreen','AnotherMethod'),1)
-          ) %>%
-          ungroup() %>%
-          group_by(Subject) %>%
-          mutate(
-            Session = sample(c('First','Second'),1),
-            Language = sample(c('English','French','Spanish','German','Japanese'), 1),
-            Bilingual = sample(c(1,0), 1)
-          ) %>%
-          ungroup() %>%
-          mutate(
-            Session = factor(Session),
-            Method = factor(Method),
-            Language = factor(Language),
-            Bilingual = factor(Bilingual)
-          ) %>%
-    
-          # arrange
-          arrange(Lab,Subject,Trial) %>%
-        
-          # drop hidden fields  
-          select(-starts_with("."))
+```{r}
+data <- expand.grid(Lab = factor(paste0('Lab',1:20)),
+                    Subject = 1:30,
+                    Trial = 1:16)
+```
+
+Simulation sequence:
+
++ assign block
++ randomly assign conditions within blocks
++ randomly generate looking times within constraints
++ do it lab-by-lab and then add some subject attention diffs
++ for (1) realism and (2) convergence issues
++ max 20s looking per trial
++ randomly generate ages
++ randomly generate method and participant vars (session, language, bilingual)
+
+```{r}
+blocks <- factor(c('IDS','IDS','ADS','ADS'))
+langs <- factor(c('English','French','Spanish','German','Japanese'))
+methods <- factor(c('HPP','SingleScreen','AnotherMethod'))
+sessions <- factor(c('First','Second'))
+bilingual <- c(TRUE, FALSE)
+
+lt_max <- 20        # max LT in a trial
+
+data %<>%
+  mutate(Subject = factor(toupper(paste0(Lab,'-',Subject))),
+         Block = ((Trial-1) %/% 4) + 1) %>%
+  group_by(Subject,Block) %>%
+  mutate(Condition = sample(blocks)) %>%
+  group_by(Lab) %>%
+  mutate(.LabDiff = runif(1, 0, .5)) %>%
+  ungroup() %>%
+  mutate(LT = ifelse(Condition == 'IDS', 
+                     rlnorm(n(), 1.5 + .LabDiff, .7), 
+                     rlnorm(n(), 1.5, .7))) %>%
+  group_by(Subject) %>%
+  mutate(LT = LT + runif(1,0,.5)) %>%
+  ungroup() %>%
+  mutate(LT = ifelse(LT > lt_max, lt_max, LT)) %>%
+  group_by(Lab) %>%
+  mutate(.LabMeanAge = round(runif(1, 3, 12))) %>%
+  ungroup() %>%
+  group_by(Subject) %>%
+  mutate(Age = round(runif(1, .LabMeanAge-.5, .LabMeanAge+.5),2)) %>%
+  ungroup() %>%
+  group_by(Lab) %>%
+  mutate(Method = sample(methods,1)) %>%
+  ungroup() %>%
+  group_by(Subject) %>%
+  mutate(Session = sample(sessions,1),
+         Language = sample(langs, 1),
+         Bilingual = sample(bilingual, 1)) %>%
+  arrange(Lab,Subject,Trial) %>%
+  select(-starts_with("."))
 ```
 
 # Data Cleaning
 
-```{r}
-data_clean <- data %>%
-              filter(LT >= 2) %>%
-            
-              # exclude outliers based on log-transformed LT
-              group_by(Subject) %>%
-              mutate(
-                .LogLT = log(LT),
-                .SubjectMeanLT = mean(.LogLT)
-              ) %>%
-              ungroup() %>%
-              mutate(
-                .MeanLT = mean(.LogLT),
-                .SDLT = sd(.LogLT)
-              ) %>%
-              mutate(
-                .z = (.SubjectMeanLT - .MeanLT) / .SDLT
-              ) %>%
-              filter(
-                abs(.z) < z_threshold
-              ) %>%       
-  
-              # filter based on minimum trials of each type
-              group_by(Subject) %>%
-              mutate(
-                .N_IDS = length(Condition[Condition == 'IDS']),
-                .N_ADS = length(Condition[Condition == 'ADS'])
-              ) %>%
-              ungroup() %>%
-              filter(
-                .N_IDS >= min_trials_per_type & .N_ADS >= min_trials_per_type
-              ) %>%
++ exclude outliers based on log-transformed LT
++ filter based on minimum trials of each type
++ remove hidden fields
 
-              # remove hidden fields
-              select(-starts_with("."))
+```{r}
+lt_min <- 2                # minumum LT for inclusion
+z_threshold <- 3           # outlier threshold (sds)
+min_trials_per_type <- 4   # min trials per type for inclusion
+
+data_clean <- data %>%
+  filter(LT >= lt_min) %>%
+  group_by(Subject) %>%
+  mutate(log_lt = log(LT), 
+         .scaled_log_lt = as.numeric(langcog::scale(log_lt))) %>%
+  filter(abs(.scaled_log_lt) < z_threshold) %>%
+  group_by(Subject) %>%
+  mutate(.N_IDS = sum(Condition == "IDS"),
+         .N_ADS = sum(Condition == "ADS")) %>%
+  filter(.N_IDS >= min_trials_per_type & 
+           .N_ADS >= min_trials_per_type) %>%
+  select(-starts_with("."))
 ```
 
 # Distributions
 
 ```{r}
-ggplot(data_clean, aes(x=LT)) + geom_histogram() + facet_grid(~Condition)
+ggplot(data_clean, aes(x = LT)) + 
+  geom_histogram() + 
+  facet_grid(~Condition)
 ```
 
 # Transformation
 
 ```{r}
-data_clean$LogLT <- log(data_clean$LT)
-
-ggplot(data_clean, aes(x=LogLT)) + geom_histogram() + facet_grid(~Condition)
+ggplot(data_clean, aes(x=log_lt)) + 
+  geom_histogram() + 
+  facet_grid(~Condition)
 ```
 
 # Create Aggregated Datasets
 
 ```{r}
 agg_subjects <- data_clean %>%
-                group_by(Lab,Method,Session,Subject,Language,Bilingual,Condition,Age) %>%
-                summarise(
-                  MeanLogLT = mean(LogLT)
-                ) %>%
-                ungroup()
+  group_by(Lab, Method, Session, Subject, Language, Bilingual, Condition, Age) %>%
+  summarise(MeanLogLT = mean(log_lt)) %>%
+  mutate(ConditionC = ifelse(Condition == "IDS", .5, -.5))
 
 agg_subjects_paired <- agg_subjects %>%
-                       spread(Condition,MeanLogLT) %>%
-                       mutate(
-                         Diff = IDS - ADS,
-                         Prop = IDS / (IDS + ADS)
-                       )
-```
-
-## ggplot Theme
-
-```{r}
-theme_manylabs <- theme_bw() +
-                  theme(
-                        axis.text = element_text(size = 14),
-                        axis.title = element_text(size = 16, family="Arial"),
-                        text = element_text(family="Arial"),
-                        legend.key = element_rect(fill = "navy"),
-                        legend.background = element_rect(fill = "white"),
-                        panel.grid.major = element_blank(),
-                        panel.grid.minor = element_blank(),
-                        panel.border = element_blank(),
-                        axis.line = element_line(),
-                        strip.background = element_rect(fill = "white", colour = NA),
-                        strip.text.x = element_text(size = 14, face = "bold", colour = "black")
-                  )
+  select(-ConditionC) %>%
+  spread(Condition, MeanLogLT) %>%
+  mutate(Diff = IDS - ADS, 
+         Prop = IDS / (IDS + ADS))
 ```
 
 # Hypothesis Tests
@@ -220,7 +166,7 @@ ggplot(agg_subjects, aes(x=Condition, y=MeanLogLT)) +
   stat_summary(fun.y='mean', geom='bar') +
   stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
   theme_manylabs
-  
+
 ggplot(agg_subjects_paired, aes(x='Overall', y=Diff)) +
   geom_boxplot() +
   geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
@@ -238,13 +184,11 @@ t.test(agg_subjects_paired$Diff)
 
 mean(agg_subjects_paired$Diff) / sd(agg_subjects_paired$Diff)
 
-agg_subjects <- agg_subjects %>%
-                mutate(
-                  ConditionC = ifelse(Condition == 'IDS', .5, -.5),
-                  ConditionC = ConditionC - mean(ConditionC)
-                )
+model <- lmer(MeanLogLT ~ ConditionC + 
+                (ConditionC | Lab) + 
+                (1 | Subject), 
+              data=agg_subjects, REML=FALSE)
 
-model <- lmer(MeanLogLT ~ ConditionC + (1 + ConditionC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
 summary(model)
 drop1(model,~.,test="Chi")
 ```
@@ -253,47 +197,49 @@ drop1(model,~.,test="Chi")
 
 ```{r}
 ggplot(agg_subjects_paired, aes(x=Lab, y=Diff)) +
-              stat_summary(fun.y='mean', geom='point') +
-              stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
-              geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
-              scale_x_discrete('') +
-              coord_flip() +
-              theme_manylabs
+  stat_summary(fun.y='mean', geom='point') +
+  stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  scale_x_discrete('') +
+  coord_flip() +
+  theme_manylabs
 
 model <- lmer(MeanLogLT ~ ConditionC + (1 + ConditionC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
 fixed_effect <- fixef(model)[['ConditionC']]
 
-lab_ranefs <- data.frame(
-                Lab = factor(rownames(ranef(model)$Lab), levels=rownames(ranef(model)$Lab)),
-                ConditionRanef = ranef(model)$Lab$ConditionC + fixed_effect
-            )
+lab_ranefs <- data.frame(Lab = factor(rownames(ranef(model)$Lab), 
+                                      levels=rownames(ranef(model)$Lab)),
+                         ConditionRanef = ranef(model)$Lab$ConditionC + 
+                           fixed_effect)
 
 ggplot(lab_ranefs, aes(x=Lab, y=ConditionRanef, group=Lab)) +
-        geom_point() +
-        geom_errorbar(aes(ymin=fixed_effect, ymax=ConditionRanef), width=.1) +
-        geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
-        geom_hline(yintercept=fixed_effect, linetype="solid", alpha=.5) +
-        scale_x_discrete('') +
-        scale_y_continuous('Random Effect') +
-        coord_flip() +
-        theme_manylabs
+  geom_point() +
+  geom_errorbar(aes(ymin=fixed_effect, ymax=ConditionRanef), width=.1) +
+  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
+  geom_hline(yintercept=fixed_effect, linetype="solid", alpha=.5) +
+  scale_x_discrete('') +
+  scale_y_continuous('Random Effect') +
+  coord_flip() +
+  theme_manylabs
 ```
 
 ## Does IDS preference change by age?
 
 ```{r}
+agg_subjects %<>%
+  ungroup() %>%
+  mutate(AgeC = Age - mean(Age))
+
 ggplot(agg_subjects_paired, aes(x=Age, y=Diff)) +
   geom_point() +
   stat_smooth() +
   geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
   theme_manylabs
 
-agg_subjects <- agg_subjects %>%
-                mutate(
-                  AgeC = Age - mean(Age)
-                )
-
-model <- lmer(MeanLogLT ~ ConditionC*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+model <- lmer(MeanLogLT ~ ConditionC*AgeC + 
+                (1 + ConditionC + AgeC | Lab) + 
+                (1 | Subject), data=agg_subjects, 
+              REML=FALSE)
 summary(model)
 drop1(model,~.,test="Chi")
 ```
@@ -302,10 +248,16 @@ drop1(model,~.,test="Chi")
 
 ```{r}
 # model with linear+quadratic random effect of age, but only linear fixed effect
-model <- lmer(MeanLogLT ~ ConditionC*poly(AgeC,1) + (1 + ConditionC + poly(AgeC,2) | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+model <- lmer(MeanLogLT ~ ConditionC*poly(AgeC,1) + 
+                (1 + ConditionC + poly(AgeC,2) | Lab) + 
+                (1 | Subject), 
+              data=agg_subjects, REML=FALSE)
 
 # model with linear+quadratic random and fixed effects of age
-model_2 <- lmer(MeanLogLT ~ ConditionC*poly(AgeC,2) + (1 + ConditionC + poly(AgeC,2) | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+model_2 <- lmer(MeanLogLT ~ ConditionC*poly(AgeC,2) + 
+                  (1 + ConditionC + poly(AgeC,2) | Lab) + 
+                  (1 | Subject), data=agg_subjects, 
+                REML=FALSE)
 
 anova(model,model_2)
 ```
@@ -313,28 +265,31 @@ anova(model,model_2)
 ## Are there trial order effects?
 
 ```{r}
-ggplot(data_clean, aes(x=Trial, y=LogLT, color=Condition)) +
+data_clean %<>%
+  ungroup() %>%
+  mutate(TrialC = Trial - mean(Trial),
+         ConditionC = ifelse(Condition == "IDS", .5, -.5),
+         AgeC = Age - mean(Age))
+
+ggplot(data_clean, aes(x=Trial, y=log_lt, color=Condition)) +
   stat_summary(fun.y='mean', geom='point') +
   stat_summary(fun.y='mean', geom='line') +
   stat_summary(fun.data='mean_cl_normal', geom='errorbar', width=.1, fun.args=list(mult=2)) +
   theme_manylabs
 
-data_clean <- data_clean %>%
-                mutate(
-                  TrialC = Trial - mean(Trial),
-                  ConditionC = ifelse(Condition == 'IDS', .5, -.5),
-                  ConditionC = ConditionC - mean(ConditionC),
-                  AgeC = Age - mean(Age)
-                )
-
-model <- lmer(LogLT ~ ConditionC*AgeC*TrialC + (1 + ConditionC + AgeC + TrialC | Lab) + (1 + TrialC + ConditionC | Subject), data=data_clean, REML=F)
-summary(model)
-drop1(model,~.,test="Chi")
+# model <- lmer(log_lt ~ ConditionC*AgeC*TrialC + 
+#                 (1 + ConditionC + AgeC + TrialC | Lab) + 
+#                 (1 + TrialC + ConditionC | Subject), 
+#               data=data_clean, REML=FALSE)
+# summary(model)
+# drop1(model,~.,test="Chi")
 ```
 
 ## Moderator Analyses
 
 ### Method
+
+Note `age | lab` doesn't converge.
 
 ```{r}
 ggplot(agg_subjects_paired, aes(x=Method, y=Diff)) +
@@ -346,12 +301,18 @@ ggplot(agg_subjects_paired, aes(x=Method, y=Diff)) +
 
 contrasts(agg_subjects$Method) <- contr.sum(length(unique(agg_subjects$Method)))
 
-model <- lmer(MeanLogLT ~ ConditionC*Method*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+model <- lmer(MeanLogLT ~ ConditionC * Method * AgeC + 
+                (1 + ConditionC  | Lab) + 
+                (1 | Subject), 
+              data=agg_subjects, REML=FALSE)
 summary(model)
 
-model_null <- lmer(MeanLogLT ~ ConditionC*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+model_null <- lmer(MeanLogLT ~ ConditionC*AgeC + 
+                     (1 + ConditionC + AgeC | Lab) + 
+                     (1 | Subject), data=agg_subjects, 
+                   REML=FALSE)
 
-anova(model,model_null)
+anova(model, model_null)
 
 # post-hoc least-squares contrasts
 lstrends(model, ~ Method, var="ConditionC", adjust="none")
