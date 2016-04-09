@@ -248,20 +248,10 @@ all_agg_subjects_paired <- all_agg_subjects %>%
 ## Overall Preference for IDS v ADS
 
 ```{r}
-#ggplot(agg_subjects, aes(x=Condition, y=MeanLogLT)) +
-#  geom_boxplot() +
-#  theme_manylabs
-
-ggplot(agg_subjects, aes(x=Condition, y=MeanLogLT)) +
+ggplot(agg_subjects, aes(x=Condition, y=MeanLogLT, group=Subject)) +
   geom_boxplot() +
   geom_jitter(width = .25, size =.5) +
   theme_manylabs
-
-#ggplot(agg_subjects_paired, aes(x='Overall', y=Diff)) +
-#  geom_boxplot() +
-#  geom_hline(yintercept=0, linetype="dashed", alpha=.5) +
-#  scale_x_discrete('') +
-#  theme_manylabs
 
 ggplot(agg_subjects_paired, aes(x='Overall', y=Diff)) +
   geom_boxplot() +
@@ -462,19 +452,17 @@ ggplot(agg_subjects_paired, aes(x=Native, y=Diff)) +
   scale_x_discrete('') +
   theme_manylabs
 
-#something is going wrong form here on out when I knit only. 
-#contrasts(agg_subjects$Native) <- contr.sum(length(unique(agg_subjects$Native)))
+contrasts(agg_subjects$Native) <- contr.sum(length(unique(agg_subjects$Native)))
 
-#model <- lmer(MeanLogLT ~ ConditionC*Native*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
-#summary(model)
+model <- lmer(MeanLogLT ~ ConditionC*Native*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+summary(model)
 
-#model_null <- lmer(MeanLogLT ~ ConditionC*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
+model_null <- lmer(MeanLogLT ~ ConditionC*AgeC + (1 + ConditionC + AgeC | Lab) + (1 | Subject), data=agg_subjects, REML=F)
 
-#anova(model,model_null)
+anova(model,model_null)
 
 # post-hoc least-squares contrasts
-#lstrends(model, ~ Native, var="ConditionC", adjust="none")
-
+lstrends(model, ~ Native, var="ConditionC", adjust="none")
 ```
 
 ### Native Language
