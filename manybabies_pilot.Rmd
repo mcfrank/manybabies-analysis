@@ -1,0 +1,96 @@
+---
+title: "ManyBabies Pilot Analysis"
+output:
+html_document:
+  toc: true
+  theme: united
+---
+
+# Preliminaries
+
+```{r Preliminaries}
+options(dplyr.width = Inf)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=TRUE)
+
+library(tidyverse)
+library(eyetrackingR)
+library(stringr)
+
+theme_manylabs <- theme_bw() +
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16, family="Arial"),
+        text = element_text(family="Arial"),
+        legend.key = element_rect(fill = "navy"),
+        legend.background = element_rect(fill = "white"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line.y = element_line(),
+        axis.line.x = element_line(),
+        strip.background = element_rect(fill = "white", colour = NA),
+        strip.text.x = element_text(size = 14, face = "bold", colour = "black"))
+```
+
+
+```{r}
+source("et_helper.R")
+```
+
+
+
+```{r}
+raw.data.path <- "pilot/frank/"
+info.path <- "info/"
+processed.data.path <- "processed_data/frank/"
+
+## LOOP TO READ IN FILES
+all.data <- data_frame()
+files <- dir(raw.data.path,pattern="*.txt")
+
+headers <- c(34, 32, 34, 34, 34, 34, 34, 34, 34, 34)
+
+for (f in 1:length(files)) {
+  print(files[f])
+  d <- read.smi.idf(paste0(raw.data.path, files[f]), header.rows=headers[f])
+  d <- preprocess.data(d, 
+                       x.max = 1024, y.max=768,
+                       samp.rate = 30,
+                       avg.eyes=TRUE)
+  d$subid <- files[f]
+  
+  ## now here's where data get bound together
+  all.data <- bind_rows(all.data, d)
+}
+```
+
+
+```{r}
+lens <- all.data %>% 
+  group_by(subid, trial, stimulus) %>%
+  summarise(length = max(t.stim)) %>%
+  mutate(trial_type = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
+  filter(trial_type == "speech") %>%
+  group_by(subid) %>%
+  mutate(trial_num = 1:n())
+
+qplot(trial_num, length, data = lens, facets = ~subid, 
+      geom = "line")
+```
+
+
+
+```{r}
+lens <- all.data %>% 
+  group_by(subid, trial, stimulus) %>%
+  summarise(length = max(t.stim)) %>%
+  mutate(trial_type = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
+  filter(trial_type == "speech") %>%
+  group_by(subid) %>%
+  mutate(trial_num = 1:n()) %>%
+  mutate(trial_type = ifelse(trial_num %% 2, "IDS","ADS")) %>%
+  group_by(trial_num, trial_type) %>%
+  summarise(m = mean(length))
+
+qplot(trial_num, m, data = lens, col = trial_type, 
+      geom = c("point","smooth"))
+```
