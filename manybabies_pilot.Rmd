@@ -15,82 +15,68 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=TRUE)
 library(tidyverse)
 library(eyetrackingR)
 library(stringr)
+library(lubridate)
+library(bit64) # necessary because of times from SMI > max integer size
 
-theme_manylabs <- theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 16, family="Arial"),
-        text = element_text(family="Arial"),
-        legend.key = element_rect(fill = "navy"),
-        legend.background = element_rect(fill = "white"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        axis.line.y = element_line(),
-        axis.line.x = element_line(),
-        strip.background = element_rect(fill = "white", colour = NA),
-        strip.text.x = element_text(size = 14, face = "bold", colour = "black"))
+theme_set(theme_bw() )
 ```
 
+Load up eye-tracking helper files. 
 
 ```{r}
 source("et_helper.R")
 ```
 
-
+Use these files to read in pilot data. 
 
 ```{r}
-raw.data.path <- "pilot/frank/"
-info.path <- "info/"
-processed.data.path <- "processed_data/frank/"
+raw_data_path <- "pilot/frank/"
+info_path <- "info/"
+processed_data_path <- "processed_data/frank/"
 
-## LOOP TO READ IN FILES
-all.data <- data_frame()
-files <- dir(raw.data.path,pattern="*.txt")
-
-headers <- c(34, 32, 34, 34, 34, 34, 34, 34, 34, 34)
-
-for (f in 1:length(files)) {
-  print(files[f])
-  d <- read.smi.idf(paste0(raw.data.path, files[f]), header.rows=headers[f])
-  d <- preprocess.data(d, 
-                       x.max = 1024, y.max=768,
-                       samp.rate = 30,
-                       avg.eyes=TRUE)
-  d$subid <- files[f]
-  
-  ## now here's where data get bound together
-  all.data <- bind_rows(all.data, d)
-}
+all_data <- dir(raw_data_path, pattern="*.txt") %>%
+  paste0(raw_data_path, .) %>%
+  map_df(get_smi_header) %>% 
+  split(.$file_name) %>%
+  map_df(read_smi_idf) %>%
+  split(.$file_name) %>%
+  map_df(preprocess_data) 
 ```
 
+Now extract trial numbers from these.
 
 ```{r}
-lens <- all.data %>% 
-  group_by(subid, trial, stimulus) %>%
-  summarise(length = max(t.stim)) %>%
+lens <- all_data %>% 
+  group_by(file_name, trial, stimulus) %>%
+  summarise(length = max(t_stim)) %>%
   mutate(trial_type = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
   filter(trial_type == "speech") %>%
-  group_by(subid) %>%
-  mutate(trial_num = 1:n())
+  group_by(file_name) %>%
+  mutate(trial_num = 1:n(), 
+         subid = str_replace(str_replace(file_name,raw_data_path,""),
+                           ".txt",""))
+```
 
+Sanity check plot to see what we are getting out. 
+
+```{r}
 qplot(trial_num, length, data = lens, facets = ~subid, 
       geom = "line")
 ```
 
-
+Now merge in demographic information. 
 
 ```{r}
-lens <- all.data %>% 
-  group_by(subid, trial, stimulus) %>%
-  summarise(length = max(t.stim)) %>%
-  mutate(trial_type = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
-  filter(trial_type == "speech") %>%
-  group_by(subid) %>%
-  mutate(trial_num = 1:n()) %>%
-  mutate(trial_type = ifelse(trial_num %% 2, "IDS","ADS")) %>%
-  group_by(trial_num, trial_type) %>%
-  summarise(m = mean(length))
+info <- read_csv("info/frank_demo.csv")
 
-qplot(trial_num, m, data = lens, col = trial_type, 
-      geom = c("point","smooth"))
+lens <- info %>% 
+  mutate(age = mdy(info$DOT) - mdy(info$DOB)) %>%
+  select(subid, age, order) %>%
+  left_join(lens)
+```
+
+Now merge in orders. 
+
+```[r}
+
 ```
