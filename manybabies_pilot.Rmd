@@ -17,8 +17,9 @@ library(eyetrackingR)
 library(stringr)
 library(lubridate)
 library(bit64) # necessary because of times from SMI > max integer size
+library(langcog)
 
-theme_set(theme_bw() )
+stheme_set(theme_bw() )
 ```
 
 Load up eye-tracking helper files. 
@@ -45,19 +46,22 @@ all_data <- dir(raw_data_path, pattern="*.txt") %>%
 
 Now extract trial numbers from these.
 
+Note that right now I clip trial < 5, which is the two music trials. This needs to be fixed. 
+
 ```{r}
 lens <- all_data %>% 
   group_by(file_name, trial, stimulus) %>%
   summarise(length = max(t_stim)) %>%
-  mutate(trial_type = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
-  filter(trial_type == "speech") %>%
+  mutate(trial_cat = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
+  filter(trial_cat == "speech") %>%
   group_by(file_name) %>%
+  filter(trial > 5) %>%
   mutate(trial_num = 1:n(), 
          subid = str_replace(str_replace(file_name,raw_data_path,""),
-                           ".txt",""))
+                           ".txt","")) 
 ```
 
-Sanity check plot to see what we are getting out. 
+Sanity check plot to see what we are getting out. Note we're apparently missing ADS-7. 
 
 ```{r}
 qplot(trial_num, length, data = lens, facets = ~subid, 
@@ -77,6 +81,58 @@ lens <- info %>%
 
 Now merge in orders. 
 
-```[r}
+```{r}
+orders <- read_csv("info/orders.csv") %>%
+  gather(marker, stimulus, 2:19) %>%
+  rename(order = Order) %>%
+  filter(!str_detect(stimulus, "Train")) %>% 
+  group_by(order) %>%
+  mutate(trial_num = 1:n()) %>%
+  separate(stimulus, into = c("trial_type", "stim_num"), sep = -2) %>%
+  select(-marker, -stim_num)
 
+d <- left_join(lens, orders) %>%
+  mutate(trial_num = ceiling(trial_num  / 2))
 ```
+
+# Plots
+
+Histogram of looking time by trial number. 
+
+```{r}
+ggplot(d, aes(x = length)) + 
+  geom_histogram() + 
+  facet_wrap(~trial_num)
+```
+
+Log looking time by trial number. 
+
+```{r}
+ggplot(d, aes(x = length)) + 
+  geom_histogram() + 
+  facet_wrap(~trial_num) + 
+  scale_x_log10()
+```
+
+And plot all data.
+
+```{r}
+ggplot(d, aes(x = trial_num, y = length, col = trial_type)) + 
+         geom_point() + 
+         geom_smooth() + 
+  scale_y_log10()
+```
+
+Plot means. 
+
+```{r}
+ms <- d %>%
+  group_by(trial_num, trial_type) %>%
+  mutate(log_length = log(length)) %>%
+  multi_boot_standard(col = "log_length", na.rm=TRUE)
+
+ggplot(ms, aes(x = trial_num, y = mean, col = trial_type)) + 
+  geom_line() + 
+  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper)) 
+```
+
