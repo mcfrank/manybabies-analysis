@@ -1,0 +1,89 @@
+lab,id,age,gender,status,trial,side,LT,trialend,stimulus,condition,comment
+plymouth,1,331,f,ok,1,left,20.194,SoundEnded,Manybabies\IDS-1.wav,ids,Everything fine
+plymouth,1,331,f,ok,2,left,20.199,SoundEnded,Manybabies\ADS-1.wav,ads,Everything fine
+plymouth,1,331,f,ok,3,right,2.715,Lookaway,Manybabies\IDS-2.wav,ids,Everything fine
+plymouth,1,331,f,ok,4,left,16.488,Lookaway,Manybabies\ADS-2.wav,ads,Everything fine
+plymouth,1,331,f,ok,5,right,18.237,SoundEnded,Manybabies\ADS-3.wav,ads,Everything fine
+plymouth,1,331,f,ok,6,right,13.777,SoundEnded,Manybabies\IDS-3.wav,ids,Everything fine
+plymouth,1,331,f,ok,7,left,4.247,Lookaway,Manybabies\IDS-4.wav,ids,Everything fine
+plymouth,1,331,f,ok,8,left,17.37,SoundEnded,Manybabies\ADS-4.wav,ads,Everything fine
+plymouth,1,331,f,ok,9,right,3.93,Lookaway,Manybabies\ADS-5.wav,ads,Everything fine
+plymouth,1,331,f,ok,10,left,7.647,Lookaway,Manybabies\IDS-5.wav,ids,Everything fine
+plymouth,1,331,f,ok,11,right,8.835,Lookaway,Manybabies\ADS-6.wav,ads,Everything fine
+plymouth,1,331,f,ok,12,right,4.457,Lookaway,Manybabies\IDS-6.wav,ids,Everything fine
+plymouth,1,331,f,ok,13,left,9.819,Lookaway,Manybabies\IDS-7.wav,ids,Everything fine
+plymouth,1,331,f,ok,14,left,3.709,Lookaway,Manybabies\ADS-7.wav,ads,Everything fine
+plymouth,1,331,f,ok,15,right,5.456,Lookaway,Manybabies\ADS-8.wav,ads,Everything fine
+plymouth,1,331,f,ok,16,right,7.311,Lookaway,Manybabies\IDS-8.wav,ids,Everything fine
+plymouth,2,342,m,out,1,left,9.261,Lookaway,Manybabies\ADS-1.wav,ads,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,2,right,9.499,Lookaway,Manybabies\IDS-1.wav,ids,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,3,left,5.452,Lookaway,Manybabies\ADS-2.wav,ads,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,4,right,11.574,Lookaway,Manybabies\IDS-2.wav,ids,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,5,left,4.147,Lookaway,Manybabies\IDS-3.wav,ids,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,6,left,1.75,Lookaway,Manybabies\ADS-3.wav,ads,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,7,right,5.883,Lookaway,Manybabies\ADS-4.wav,ads,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,8,right,1.738,Lookaway,Manybabies\IDS-4.wav,ids,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,9,left,0.761,Lookaway,Manybabies\IDS-5.wav,ids,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,10,right,0.434,Lookaway,Manybabies\ADS-5.wav,ads,"Crying/agitated, grabbed headphones"
+plymouth,2,342,m,out,11,right,0,ExpAbort,Manybabies\IDS-6.wav,ids,"Crying/agitated, grabbed headphones"
+plymouth,3,325,f,out,1,right,9.379,Lookaway,Manybabies\IDS-5.wav,ids,uninterested/grizzly
+plymouth,3,325,f,out,2,right,3.494,Lookaway,Manybabies\ADS-5.wav,ads,uninterested/grizzly
+plymouth,3,325,f,out,3,left,1.853,Lookaway,Manybabies\ADS-7.wav,ads,uninterested/grizzly
+plymouth,3,325,f,out,4,left,5.248,Lookaway,Manybabies\IDS-7.wav,ids,uninterested/grizzly
+plymouth,3,325,f,out,5,right,13.208,Lookaway,Manybabies\ADS-1.wav,ads,uninterested/grizzly
+plymouth,3,325,f,out,6,right,0.873,Lookaway,Manybabies\IDS-1.wav,ids,uninterested/grizzly
+plymouth,3,325,f,out,7,left,1.309,Lookaway,Manybabies\ADS-3.wav,ads,uninterested/grizzly
+plymouth,3,325,f,out,8,left,0,ExpAbort,Manybabies\IDS-3.wav,ids,uninterested/grizzly
+plymouth,4,356,f,ok,1,right,6.331,Lookaway,Manybabies\IDS-1.wav,ids,Everything fine
+plymouth,4,356,f,ok,2,left,6.001,Lookaway,Manybabies\ADS-1.wav,ads,Everything fine
+plymouth,4,356,f,ok,3,left,9.387,Lookaway,Manybabies\IDS-2.wav,ids,Everything fine
+plymouth,4,356,f,ok,4,right,18.228,SoundEnded,Manybabies\ADS-2.wav,ads,Everything fine
+plymouth,4,356,f,ok,5,left,4.584,Lookaway,Manybabies\ADS-3.wav,ads,Everything fine
+plymouth,4,356,f,ok,6,right,5.139,Lookaway,Manybabies\IDS-3.wav,ids,Everything fine
+plymouth,4,356,f,ok,7,right,7.103,Lookaway,Manybabies\IDS-4.wav,ids,Everything fine
+plymouth,4,356,f,ok,8,left,6.003,Lookaway,Manybabies\ADS-4.wav,ads,Everything fine
+plymouth,4,356,f,ok,9,left,0.98,Lookaway,Manybabies\ADS-5.wav,ads,Everything fine
+plymouth,4,356,f,ok,10,right,8.079,Lookaway,Manybabies\IDS-5.wav,ids,Everything fine
+plymouth,4,356,f,ok,11,right,10.269,Lookaway,Manybabies\ADS-6.wav,ads,Everything fine
+plymouth,4,356,f,ok,12,left,20.203,SoundEnded,Manybabies\IDS-6.wav,ids,Everything fine
+plymouth,4,356,f,ok,13,left,7.528,Lookaway,Manybabies\IDS-7.wav,ids,Everything fine
+plymouth,4,356,f,ok,14,right,8.728,Lookaway,Manybabies\ADS-7.wav,ads,Everything fine
+plymouth,4,356,f,ok,15,right,13.209,Lookaway,Manybabies\ADS-8.wav,ads,Everything fine
+plymouth,4,356,f,ok,16,left,19.762,SoundEnded,Manybabies\IDS-8.wav,ids,Everything fine
+plymouth,5,239,f,ok,1,left,8.07,Lookaway,Manybabies\ADS-1.wav,ads,Everything fine
+plymouth,5,239,f,ok,2,left,9.931,Lookaway,Manybabies\IDS-1.wav,ids,Everything fine
+plymouth,5,239,f,ok,3,right,5.119,Lookaway,Manybabies\ADS-2.wav,ads,Everything fine
+plymouth,5,239,f,ok,4,left,11.239,Lookaway,Manybabies\IDS-2.wav,ids,Everything fine
+plymouth,5,239,f,ok,5,left,11.789,Lookaway,Manybabies\IDS-3.wav,ids,Everything fine
+plymouth,5,239,f,ok,6,right,6.978,Lookaway,Manybabies\ADS-3.wav,ads,Everything fine
+plymouth,5,239,f,ok,7,right,6.439,Lookaway,Manybabies\ADS-4.wav,ads,Everything fine
+plymouth,5,239,f,ok,8,left,20.211,SoundEnded,Manybabies\IDS-4.wav,ids,Everything fine
+plymouth,5,239,f,ok,9,left,14.727,Lookaway,Manybabies\IDS-5.wav,ids,Everything fine
+plymouth,5,239,f,ok,10,right,6.54,Lookaway,Manybabies\ADS-5.wav,ads,Everything fine
+plymouth,5,239,f,ok,11,left,18.218,SoundEnded,Manybabies\IDS-6.wav,ids,Everything fine
+plymouth,5,239,f,ok,12,left,4.908,Lookaway,Manybabies\ADS-6.wav,ads,Everything fine
+plymouth,5,239,f,ok,13,right,8.179,Lookaway,Manybabies\ADS-7.wav,ads,Everything fine
+plymouth,5,239,f,ok,14,left,0.318,Lookaway,Manybabies\IDS-7.wav,ids,Everything fine
+plymouth,5,239,f,ok,15,left,9.598,Lookaway,Manybabies\IDS-8.wav,ids,Everything fine
+plymouth,5,239,f,ok,16,right,3.376,Lookaway,Manybabies\ADS-8.wav,ads,Everything fine
+plymouth,6,333,m,out,1,right,2.176,Lookaway,Manybabies\ADS-1.wav,ads,Big brother got to the controls…
+plymouth,6,333,m,out,2,left,2.393,Lookaway,Manybabies\IDS-1.wav,ids,Big brother got to the controls…
+plymouth,6,333,m,out,3,left,10.148,Lookaway,Manybabies\ADS-2.wav,ads,Big brother got to the controls…
+plymouth,6,333,m,out,4,right,1.844,Lookaway,Manybabies\IDS-2.wav,ids,Big brother got to the controls…
+plymouth,6,333,m,out,5,right,0,ExpAbort,Manybabies\IDS-3.wav,ids,Big brother got to the controls…
+plymouth,7,264,f,ok,1,left,4.247,Lookaway,Manybabies\IDS-5.wav,ids,very inattentive
+plymouth,7,264,f,ok,2,right,3.377,Lookaway,Manybabies\ADS-5.wav,ads,very inattentive
+plymouth,7,264,f,ok,3,right,8.3,Lookaway,Manybabies\ADS-7.wav,ads,very inattentive
+plymouth,7,264,f,ok,4,left,3.693,Lookaway,Manybabies\IDS-7.wav,ids,very inattentive
+plymouth,7,264,f,ok,5,left,2.398,Lookaway,Manybabies\ADS-1.wav,ads,very inattentive
+plymouth,7,264,f,ok,6,right,1.959,Lookaway,Manybabies\IDS-1.wav,ids,very inattentive
+plymouth,7,264,f,ok,7,left,0.972,Lookaway,Manybabies\ADS-3.wav,ads,very inattentive
+plymouth,7,264,f,ok,8,right,1.632,Lookaway,Manybabies\IDS-3.wav,ids,very inattentive
+plymouth,7,264,f,ok,9,right,2.94,Lookaway,Manybabies\ADS-2.wav,ads,very inattentive
+plymouth,7,264,f,ok,10,left,1.084,Lookaway,Manybabies\IDS-2.wav,ids,very inattentive
+plymouth,7,264,f,ok,11,left,1.413,Lookaway,Manybabies\IDS-4.wav,ids,very inattentive
+plymouth,7,264,f,ok,12,right,4.585,Lookaway,Manybabies\ADS-4.wav,ads,very inattentive
+plymouth,7,264,f,ok,13,right,1.416,Lookaway,Manybabies\IDS-6.wav,ids,very inattentive
+plymouth,7,264,f,ok,14,left,2.401,Lookaway,Manybabies\ADS-6.wav,ads,very inattentive
+plymouth,7,264,f,ok,15,left,3.165,Lookaway,Manybabies\IDS-8.wav,ids,very inattentive
+plymouth,7,264,f,ok,16,right,1.303,Lookaway,Manybabies\ADS-8.wav,ads,very inattentive
