@@ -2,8 +2,12 @@
 title: "ManyBabies Pilot Analysis"
 output:
 html_document:
-  toc: true
-  theme: united
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: hide
+    highlight: tango
+    theme: spacelab
 ---
 
 # Preliminaries
@@ -21,6 +25,10 @@ library(langcog)
 
 stheme_set(theme_bw() )
 ```
+
+# Load data
+
+## Frank data
 
 Load up eye-tracking helper files. 
 
@@ -61,7 +69,7 @@ lens <- all_data %>%
                            ".txt","")) 
 ```
 
-Sanity check plot to see what we are getting out. Note we're apparently missing ADS-7. 
+Note we're apparently missing trial ADS-7. 
 
 ```{r}
 qplot(trial_num, length, data = lens, facets = ~subid, 
@@ -91,9 +99,35 @@ orders <- read_csv("info/orders.csv") %>%
   separate(stimulus, into = c("trial_type", "stim_num"), sep = -2) %>%
   select(-marker, -stim_num)
 
-d <- left_join(lens, orders) %>%
+frank_data <- left_join(lens, orders) %>%
   mutate(trial_num = ceiling(trial_num  / 2))
 ```
+
+## Floccia data
+
+```{r}
+floccia_data <- read_csv("pilot/floccia/pilot data.csv")
+```
+
+That was easy!
+
+## Hamlin data
+
+```{r}
+hamlin_path <- "pilot/hamlin/"
+hamlin_data <- dir(hamlin_path, pattern="*.csv") %>%
+  paste0(hamlin_path, .) %>%
+  map_df(function(x) {read_csv(x) %>% mutate(order = x)}) %>%
+  mutate(order = as.numeric(str_replace(str_replace(order, ".csv",""),
+                                        "pilot/hamlin/order",""))) %>%
+  gather(trial, looking_time, 
+         starts_with("Train"), starts_with("IDS"), starts_with("ADS")) %>%
+  separate(
+```
+
+## Merge all data 
+
+
 
 # Plots
 
