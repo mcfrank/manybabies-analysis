@@ -23,7 +23,7 @@ library(lubridate)
 library(bit64) # necessary because of times from SMI > max integer size
 library(langcog)
 
-stheme_set(theme_bw() )
+theme_set(theme_bw() )
 ```
 
 # Load data
@@ -82,7 +82,6 @@ Now merge in demographic information.
 info <- read_csv("info/frank_demo.csv")
 
 lens <- info %>% 
-  mutate(age = mdy(info$DOT) - mdy(info$DOB)) %>%
   select(subid, age, order) %>%
   left_join(lens)
 ```
