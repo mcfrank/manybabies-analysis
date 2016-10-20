@@ -215,7 +215,7 @@ qplot(looking_time, fill = lab, facets = ~ lab, binwidth = 2, data = d)
 
 Stanford has a large number of 2s looking times because that's the lookaway from the tracker. So when a child isn't looking at all, they get a 2s. *How should we deal with this?*
 
-Next, are children making it through the experiment? Looks like essentially everyone 
+Next, are children making it through the experiment? Looks like essentially everyone does.
 
 ```{r}
 final_trial <- d %>%
@@ -257,7 +257,7 @@ ggplot(ms, aes(x = trial_num, y = mean, col = lab)) +
 
 ### Between-subjects analysis
 
-Doesn't compute difference scores - treats IDS and ADS observations as independent. These analyss should likely be lower-powered. 
+Doesn't compute difference scores - treats IDS and ADS observations as independent. These analyses should likely be lower-powered. (Interested to hear people's thoughts as to whether they should be included). 
 
 ```{r}
 ms <- d %>%
@@ -280,14 +280,18 @@ ms <- d %>%
   filter(trial_type != "Train", 
          looking_time != 0, !is.na(looking_time)) %>%  
   group_by(lab, trial_num, trial_type) %>%
-  multi_boot_standard(col = "looking_time", na.rm=TRUE)
+  multi_boot_standard(col = "looking_time", na.rm=TRUE) %>%
+  ungroup %>%
+  mutate(lab = fct_relevel(lab, "ubc"))
 
 ggplot(ms, aes(x = trial_num, y = mean, col = trial_type)) + 
   geom_smooth(se = FALSE, span = 2) + 
   facet_wrap(~lab) + 
-  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), 
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
                  position = position_dodge(width= .1))+ 
-  ylab("Looking time (s)")
+  ylab("Looking time (s)") + 
+  scale_color_solarized(name = "Trial Type") + 
+  theme(legend.position = "bottom")
 ```
 
 Take a look at this in log space as well, following Csibra et al. (2015), "Statistical Treatment of Looking-Time Data." Doesn't change much, but is likely better. 
@@ -303,9 +307,11 @@ ms <- d %>%
 ggplot(ms, aes(x = trial_num, y = mean, col = trial_type)) + 
   geom_smooth(se = FALSE, span = 2) + 
   facet_wrap(~lab) + 
-  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), 
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
                  position = position_dodge(width= .1)) +
-  ylab("Log looking time (s)")
+  ylab("Log looking time (s)") + 
+  scale_color_solarized(name = "Trial Type") + 
+  theme(legend.position = "bottom")
   
 ```
 
