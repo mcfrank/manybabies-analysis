@@ -1,6 +1,6 @@
 ---
 title: "ManyBabies 1: Pilot Data Analysis"
-author: "Mike Frank"
+author: "Mike Frank (edits by Hugh Rabagliati)"
 output:
   html_document:
     toc: true
@@ -23,7 +23,7 @@ There are many decision-points that need to be discussed throughout. Among them:
 ```{r Preliminaries, results = "hide", message = FALSE}
 options(dplyr.width = Inf)
 knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=TRUE)
-
+library(lme4)
 library(tidyverse)
 library(eyetrackingR)
 library(stringr)
@@ -31,7 +31,7 @@ library(lubridate)
 library(bit64) # necessary because of times from SMI > max integer size
 library(langcog)
 library(knitr)
-
+library(forcats)
 source("et_helper.R")
 
 theme_set(theme_bw())
@@ -368,6 +368,109 @@ qplot(age_days, idspref, col = lab, group = 1, data = diffs) +
   facet_wrap(~trial_num) + 
   geom_hline(yintercept = 0, lty = 2) + 
   ylab("IDS preference (s)") 
+```
+
+
+# Hypothesis tests
+**I would very much recommend including random effects of item, but that info is not included with the data as is.**  
+
+## Overall preference tests  
+#### One Sample t-test against chance 
+Using log transformed looking time.
+```{r}
+d_t_test1 <- d %>% 
+  filter(trial_type != "Train", 
+         looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time)) %>% 
+  group_by(subid,trial_type) %>% 
+  summarise(log_lt = mean(log_lt)) %>%
+  group_by(subid) %>% 
+  filter(n() == 2) %>%
+  summarize(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"])
+t.test(d_t_test1$log_lt_diff , mu = 0)
+```
+
+#### Paired t-test 
+As above, but perhaps it is simpler to compare conditions, as our mixed effects models will use a condition predictor. Using log transformed looking time.
+```{r}
+d_t_test2 <- d %>% 
+  filter(trial_type != "Train", 
+         looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time)) %>% 
+  group_by(subid,trial_type) %>% 
+  summarise(log_lt = mean(log_lt))
+t.test(log_lt ~  trial_type, data = d_t_test2, paired = T)
+```
+
+
+## IDS Preference across age
+#### Linear effect of age
+Planned regression: 1 + CentredAge * Trial Type + (1 + Centred Age * Trial Type)  
+I removed the by lab interaction to aid convergence.
+```{r}
+d_lmer1 <- d %>% 
+  filter(trial_type != "Train", 
+         looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) 
+summary(lmer(log_lt ~ 1 + AgeC * trial_type + (1+ AgeC + trial_type|lab), data = d_lmer1))
+```
+
+#### Quadratic effect of age
+Planned regression: 1 + (CentredAge + CentredAge^2) * Trial Type + (1 + (Centred Age + CentredAge ^2) * Trial Type)  
+I removed the by lab interaction to aid convergence
+
+```{r}
+d_lmer2 <- d %>% 
+  filter(trial_type != "Train", 
+         looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) 
+summary(lmer(log_lt ~ 1 + poly(AgeC,2) * trial_type + (1+ poly(AgeC,2) + trial_type|lab), data = d_lmer2))
+```
+
+#### Secondary hypothesis tests, e.g trial order and age. 
+We will fit a linear mixed effects model predicting all individual observations, with the structure:  
+log(looking.time) ~ trial.num * stimulus * age + (trial.num * stimulus | subid) + (trial.num * stimulus * age | lab)  
+NB. This is taken from the RRR. Does stimulus here refer to condition or item? I have taken it to refer to condition.  
+Interactions removed to aid convergence.
+
+```{r}
+d_lmer3 <- d %>% 
+  filter(trial_type != "Train", 
+         looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days),trial_numC = (trial_num - mean(trial_num))/sd(trial_num)) 
+summary(lmer(log_lt ~ 1 + AgeC * trial_type * trial_numC + (1+ trial_type + trial_numC|subid)+ (1+ AgeC + trial_type + trial_numC|lab) , data = d_lmer3))
+```
+
+
+
+## Christina's Planned Moderator analyses
+These analyses were planned to be by preference score, rather than by interactions. **Iff we are able to include item names in the data files, I would suggest going by interactions instead so that we can account for item effects with regard to, e.g., missing data.**    
+
+#### Preference by method
+Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.   
+ids.pref ~ method + (1 | lab)
+
+```{r}
+d_moder1 <- d %>% 
+  filter(trial_type != "Train", 
+         looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time),AgeC = (age_days - mean(age_days))/sd(age_days)) %>% 
+  group_by(subid,trial_type,method,lab,AgeC) %>% 
+  summarise(log_lt = mean(log_lt)) %>%
+  group_by(subid,method,lab,AgeC) %>% 
+  filter(n() == 2) %>%
+  summarize(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"])
+
+summary(lmer(log_lt_diff ~ method + (1|lab), data = d_moder1))
+```
+
+#### Preference by method interacting with age
+Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.   
+ids.pref ~ method * age + (1 +age | lab)
+
+```{r}
+
+summary(lmer(log_lt_diff ~ method*AgeC + (1+AgeC|lab), data = d_moder1))
 ```
 
 # Conclusions
