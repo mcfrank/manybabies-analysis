@@ -1,6 +1,6 @@
 ---
 title: "ManyBabies 1: Pilot Data Analysis"
-author: "Mike Frank"
+author: "Mike Frank, Hugh Rabagliati, and others"
 output:
   html_document:
     toc: true
