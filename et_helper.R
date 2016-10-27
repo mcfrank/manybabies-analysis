@@ -38,7 +38,7 @@ read_smi_idf <- function (info) {
   
   ## DATA CLEANING 
   # read in data and get rid of header rows
-  all.d <- read_tsv(info$file_name, skip=info$header_len, guess_max = 5000)
+  all.d <- suppressWarnings(read_tsv(info$file_name, skip=info$header_len, guess_max = 5000, col_types = cols()))
   
   ## split data into messages and data
   ## First get data:
@@ -101,6 +101,8 @@ read_smi_idf <- function (info) {
 ## PREPROCESS DATA 
 ## take data file with l and r, x and y, as well as stimulus, average
 ## eyes, do whatever preprocessing needs to be done. 
+##
+## note that this assumes that each stimulus is unique (none are shown twice)
 ################################################################################
 
 preprocess_data <- function(d, avg_eyes=TRUE) {
@@ -114,34 +116,20 @@ preprocess_data <- function(d, avg_eyes=TRUE) {
   }
   
   ## clip off out of range numbers
-  d$x[d$x < 0 | d$x > d$width] <- NA
-  d$y[d$y < 0 | d$y > d$height] <- NA
+  d$x[d$x <= 0 | d$x >= d$width] <- NA
+  d$y[d$y <= 0 | d$y >= d$height] <- NA
   
   ## convert the time into seconds
-  d$t <- round((d$t - d$t[1])/(1000000), 3)
-  
-  ## add a column of times for each video segment
-  ## note this code makes me somewhat ashamed; it's slow and it abuses the R namespace
-  ## because it's basically a for loop. but I don't know how to fix it. -mcf
-  stim_change <- c(diff(as.numeric(factor(d$stimulus))) != 0,0)
-  dt <- c(diff(d$t),0)
-  t <- 0
-  d$t_stim <- mapply(function (x,y) { 
-    if(x==TRUE) { # if stimulus changes
-      t <<- 0 # reset counter
-      return(t)
-    } else { # if stimulus is the same
-      t <<- t + y # increment counter
-      return(t)
-    }},stim_change,dt)
-  
-  ## round to the nearest sample
-  d$t_stim <- round(d$t_stim*d$samp_rate)/d$samp_rate
-  
+  ## get stimulus-time
+  ## round to the nearest sample  
   ## y flip (so origin is cartesian, not matrix (bottom left, instead of top left)
-  d$y <- d$height - d$y
+  d <- d %>% 
+    mutate(t = round((d$t - d$t[1])/(1000000), 3), 
+           dt = c(diff(t),0)) %>%
+    group_by(stimulus) %>%
+    mutate(t_stim = round(cumsum(dt) * samp_rate)/samp_rate, 
+           y = height - y) 
   
-  ## finished
   return (d)
 }
 

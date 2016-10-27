@@ -10,7 +10,7 @@ output:
     theme: spacelab
 ---
 
-This document shows an analysis of MB1 pilot data for purposes of procedural and analytic decision-making. It includes analysis of demographics and looking times, as well as condition differences. *Condition differences (i.e., analyses of IDS preference) are included for purposes of analysis planning and should not be used for modification of procedure.*
+This document shows an analysis of MB1 pilot data for purposes of procedural and analytic decision-making. It includes analysis of demographics and looking times, as well as condition differences. 
 
 Please forgive errors, omissions, lack of clearly labeled axes, etc. This document was produced quickly to provide an initial guide for decision-making. 
 
@@ -22,10 +22,9 @@ There are many decision-points that need to be discussed throughout. Among them:
 
 ```{r Preliminaries, results = "hide", message = FALSE}
 options(dplyr.width = Inf)
-knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=TRUE)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=FALSE)
 library(lme4)
 library(tidyverse)
-library(eyetrackingR)
 library(stringr)
 library(lubridate)
 library(bit64) # necessary because of times from SMI > max integer size
@@ -37,30 +36,37 @@ source("et_helper.R")
 theme_set(theme_bw())
 ```
 
-# Load data
-
-Loading process to standardize pilot data from each lab. Current desideratum is a long-form data sheet with columns:
-
-- `lab` [string] - unique identifier
-- `method` [string] - `eye-tracking`, `HPP`, `single screen`
-- `subid` [string] - unique within-lab ID
-- `age_days` [integer] - chronological age
-- `trial_type` [string] - `IDS`, `ADS`, and `training`
-- `trial_num` [integer] - trial number, from 1 -- 8 (with -2 and -1 denoting training trials)
-- `looking_time` [double] - looking time in seconds
-
-In general, we probably want to have three different spreadsheets:
+In general, based on the experiences below, we probably want to have three different spreadsheets:
 
 - `labs` - this has lab and method info
 - `subjects` - this has demographics for each subject
 - `trials` - this has long-form trial data 
 
+Each participating lab will contribute a `subjects` and a `trials` spreadsheet.
+
+1. `trials` spreadsheet is a long-form data sheet. Each row is a trial. Columns are:
+
+- `lab` [string] - unique identifier
+- `subid` [string] - unique within-lab ID
+- `age_days` [integer] - chronological age
+- `trial_type` [string] - `IDS`, `ADS`, and `training`
+- `stimulus` [string] - `training`, `IDS-X` or `ADS-x` - the actual sound file that was playing
+- `trial_num` [integer] - trial number, from 1 -- 8 (with -2 and -1 denoting training trials)
+- `looking_time` [double] - looking time in seconds
+- `total_trial_time` [double] - total length of the trial
+
+2. `subjects` spreadsheet is a long-form data sheet. Each row is a subject. Columns are:
+
+- `lab` [string] - unique lab identifier
+- `subid` [string] - unique ID 
+- `method` [string] - `eye-tracking`, `HPP`, `single screen`
+
+
 Then these can be merged appropriately. 
 
-_Questions_:
 
-- Do we want order in here? Probably. 
-- Do we want specific stimulus? Likely yes as well.
+# Load data
+
 
 
 ## Frank data
@@ -81,18 +87,20 @@ all_data <- dir(raw_data_path, pattern="*.txt") %>%
   map_df(preprocess_data) 
 ```
 
+
 Now extract trial numbers and match with stimuli.
 
 Some items to be fixed:
 
-- Currently we're not actually matching stimuli to trials (this will require parsing eye-tracker XML output)
-- We're missing trial ADS-7; that's a (major) oversight from the experimental setup. 
-- Right now I clip trial < 5, which trims out the two training trials. 
+* Currently we're not actually matching stimuli to trials (this will require parsing eye-tracker XML output)
+* We're missing trial ADS-7; that's a (major) oversight from the experimental setup. 
+* Right now I clip trials < 5, which trims out the two training trials. 
 
 ```{r}
 frank_data <- all_data %>% 
   group_by(file_name, trial, stimulus) %>%
-  summarise(looking_time = max(t_stim)) %>%
+  summarise(looking_time = sum(dt[!is.na(x) & !is.na(y)]),
+            looking_time = ifelse(is.na(looking_time), 0, looking_time)) %>%
   mutate(trial_cat = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
   filter(trial_cat == "speech") %>%
   group_by(file_name) %>%
@@ -105,7 +113,7 @@ frank_data <- all_data %>%
 Now merge in demographic information. 
 
 ```{r}
-info <- read_csv("info/frank_demo.csv")
+suppressWarnings(info <- read_csv("info/frank_demo.csv", col_types = cols()))
 
 frank_data <- info %>% 
   select(subid, age, order) %>%
@@ -115,7 +123,7 @@ frank_data <- info %>%
 Now merge in orders. 
 
 ```{r}
-orders <- read_csv("info/orders.csv") %>%
+orders <- suppressWarnings(read_csv("info/orders.csv", col_types = cols())) %>%
   gather(marker, stimulus, 2:19) %>%
   rename(order = Order) %>%
   filter(!str_detect(stimulus, "Train")) %>% 
@@ -136,7 +144,8 @@ frank_data <- left_join(frank_data, orders) %>%
 ## Floccia data
 
 ```{r}
-floccia_data <- read_csv("pilot/floccia/pilot data.csv") %>%
+floccia_data <- suppressWarnings(read_csv("pilot/floccia/pilot data.csv", 
+                                          col_types = cols())) %>%
   rename(age_days = age, 
          looking_time = LT) %>%
   mutate(subid = as.character(id), 
@@ -155,7 +164,8 @@ floccia_data <- read_csv("pilot/floccia/pilot data.csv") %>%
 hamlin_path <- "pilot/hamlin/"
 hamlin_data <- dir(hamlin_path, pattern="*.csv") %>%
   paste0(hamlin_path, .) %>%
-  map_df(function(x) {read_csv(x) %>% mutate(order = x)}) %>%
+  map_df(function(x) {suppressWarnings(read_csv(x, col_types = cols())) %>% 
+      mutate(order = x)}) %>%
   mutate(order = as.numeric(str_replace(str_replace(order, ".csv",""),
                                         "pilot/hamlin/order",""))) %>%
   gather(trial, looking_time, 
@@ -170,16 +180,32 @@ hamlin_data <- dir(hamlin_path, pattern="*.csv") %>%
   select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
 ```
 
+## Gonzalez-Gomez data
+
+```{r}
+gonzalez_data <- suppressWarnings(read_csv("pilot/gonzalez/long_data.csv", 
+                                           col_types = cols())) %>%
+  mutate(lab = "brookes", 
+         method = "single-screen",
+         subid = SubjectID, 
+         age_days = as.numeric(str_replace(age_mo, "m", ""))*30.3,
+         trial_type = ifelse(str_detect(StimName, "trial"), "Train",
+                             ifelse(str_detect(StimName, "IDS"), "IDS", "ADS")), 
+         trial_num = floor((Trial+1)/2), 
+         looking_time = TotalLook/1000) %>%
+  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
+```
+
 ## Merge all data 
 
 This is what the eventual data frame looks like:
 
 ```{r}
-d <- bind_rows(floccia_data, hamlin_data, frank_data)
+d <- bind_rows(floccia_data, hamlin_data, frank_data, gonzalez_data)
 kable(head(d))
 ```
 
-## Descriptives
+# Descriptives and Exclusions
 
 ```{r}
 d %>%
@@ -190,8 +216,26 @@ d %>%
             age_months = mean(age_days)/30.3) %>%
   kable(digits = 1)
 ```
+## Exclusions
 
-# Plots
+This is an important decision-point. At least we want to exclude:
+
+- Children with no looking time
+- Trials with no looking time
+
+```{r}
+lt_totals <- d %>%
+  group_by(lab, subid) %>%
+  summarise(total_looking_time = sum(looking_time, na.rm=TRUE))
+
+d <- d %>%
+  left_join(lt_totals) %>%
+  filter(total_looking_time != 0, 
+         !is.na(total_looking_time)) %>%
+  mutate(looking_time = ifelse(looking_time == 0, NA, looking_time))
+  
+
+```
 
 ## Demographics
 
@@ -215,14 +259,20 @@ qplot(looking_time, fill = lab, facets = ~ lab, binwidth = 2, data = d)
 
 Stanford has a large number of 2s looking times because that's the lookaway from the tracker. So when a child isn't looking at all, they get a 2s. *How should we deal with this?*
 
+```{r}
+qplot(age_days, looking_time, col = lab, data = d)
+```
+
+## Child outcomes
+
 Next, are children making it through the experiment? Looks like essentially everyone does.
 
 ```{r}
-final_trial <- d %>%
+d %>%
   group_by(lab, subid) %>%
-  summarize(max_trial = max(trial_num[looking_time > 2]))
-                            
-qplot(max_trial, fill = lab, data = final_trial)
+  summarize(max_trial = max(trial_num[!is.na(looking_time)])) %>%
+  summarise(prop_finishing = mean(max_trial == 8)) %>%
+  kable(digits = 2)
 ```
 
 Now, histogram of looking time by trial number. Looks like looking times are staying pretty long. 
@@ -240,7 +290,7 @@ qplot(age_days, looking_time, col = lab, facets = ~ trial_num, data = d) +
   geom_smooth(aes(group = 1), method = "lm", col = "black")
 ```
 
-Plot means. 
+Plot means. Note that this graph has survivorship bias -- namely, those observations later in the graph represent kids that had more trials. 
 
 ```{r}
 ms <- d %>%
@@ -253,86 +303,56 @@ ggplot(ms, aes(x = trial_num, y = mean, col = lab)) +
                  position = position_dodge(width = .1)) 
 ```
 
-## Condition differences
-
-### Between-subjects analysis
-
-Doesn't compute difference scores - treats IDS and ADS observations as independent. These analyses should likely be lower-powered. (Interested to hear people's thoughts as to whether they should be included). 
+We could plot this as a more classic habituation graph, from habituation.
 
 ```{r}
+last_trial <- d %>%
+  group_by(lab, subid) %>%
+  summarise(max_trial = max(trial_num[!is.na(looking_time)])) 
+
 ms <- d %>%
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%  
-  group_by(trial_num, trial_type) %>%
+  left_join(last_trial) %>%
+  mutate(trial_num_habit = trial_num - max_trial) %>%
+  group_by(lab, trial_num_habit) %>%
   multi_boot_standard(col = "looking_time", na.rm=TRUE)
 
-ggplot(ms, aes(x = trial_num, y = mean, col = trial_type)) + 
-  geom_line() + 
+ggplot(ms, aes(x = trial_num_habit, y = mean, col = lab)) + 
+  geom_smooth(se=FALSE, span = 1) +
+  geom_point() + 
   geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), 
-                 position = position_dodge(width= .1)) +
-  ylab("Looking time (s)")
+                 position = position_dodge(width = .1)) + 
+  xlab("Trials to habituation/experiment end") + 
+  xlim(-7.1,0.1)
 ```
 
-Split by lab (which is really age now).
+# Condition differences
 
-```{r}
-ms <- d %>%
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%  
-  group_by(lab, trial_num, trial_type) %>%
-  multi_boot_standard(col = "looking_time", na.rm=TRUE) %>%
-  ungroup %>%
-  mutate(lab = fct_relevel(lab, "ubc"))
-
-ggplot(ms, aes(x = trial_num, y = mean, col = trial_type)) + 
-  geom_smooth(se = FALSE, span = 2) + 
-  facet_wrap(~lab) + 
-  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
-                 position = position_dodge(width= .1))+ 
-  ylab("Looking time (s)") + 
-  scale_color_solarized(name = "Trial Type") + 
-  theme(legend.position = "bottom")
-```
-
-Take a look at this in log space as well, following Csibra et al. (2015), "Statistical Treatment of Looking-Time Data." Doesn't change much, but is likely better. 
-
-```{r}
-ms <- d %>%
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  group_by(lab, trial_num, trial_type) %>%
-  mutate(log10_looking_time = log10(looking_time)) %>%
-  multi_boot_standard(col = "log10_looking_time", na.rm=TRUE)
-
-ggplot(ms, aes(x = trial_num, y = mean, col = trial_type)) + 
-  geom_smooth(se = FALSE, span = 2) + 
-  facet_wrap(~lab) + 
-  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
-                 position = position_dodge(width= .1)) +
-  ylab("Log looking time (s)") + 
-  scale_color_solarized(name = "Trial Type") + 
-  theme(legend.position = "bottom")
-  
-```
-
-### Within-subjects
-
-Now do (perhaps) the more appropriate analysis: For each pair of trials, subtract to get the difference score. Again following Csibra, we do a difference of logs. 
+For each pair of trials, subtract to get the difference score. Again following Csibra, we do a difference of logs. 
 
 ```{r}
 diffs <- d %>%
   filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
+         looking_time != 0, 
+         !is.na(looking_time)) %>%
   group_by(lab, subid, age_days, trial_num) %>%
-  filter(n() == 2) %>% # take only pairs that are complete
-  summarise(idspref = log10(looking_time[trial_type=="IDS"]) - 
+  filter(sum(trial_type=="IDS") == 1 & 
+           sum(trial_type=="ADS") == 1) %>% # take only pairs that are complete
+  summarise(diff = looking_time[trial_type=="IDS"] - 
+              looking_time[trial_type=="ADS"],
+            diff_log = log10(looking_time[trial_type=="IDS"]) - 
               log10(looking_time[trial_type=="ADS"]))
 ```
 
 What's the distributional form of these data? 
 
 ```{r}
-qplot(idspref, data = diffs)
+qplot(diff, data = diffs) + 
+  geom_vline(xintercept = mean(diffs$diff), col = "red", lty = 2) 
+```
+
+```{r}
+qplot(diff_log, data = diffs) + 
+  geom_vline(xintercept = mean(diffs$diff_log), col = "red", lty = 2) 
 ```
 
 How do they change with trials?
@@ -340,7 +360,7 @@ How do they change with trials?
 ```{r}
 ms_diff <- diffs %>%
   group_by(lab, trial_num) %>%
-  multi_boot_standard(col = "idspref", na.rm=TRUE)
+  multi_boot_standard(col = "diff_log", na.rm=TRUE)
 
 ggplot(ms_diff, aes(x = trial_num, y = mean)) +
          geom_smooth(se = FALSE, span = 2) + 
@@ -354,7 +374,7 @@ ggplot(ms_diff, aes(x = trial_num, y = mean)) +
 Or with age? 
 
 ```{r}
-qplot(age_days, idspref, col = lab, group = 1, data = diffs) + 
+qplot(age_days, diff_log, col = lab, group = 1, data = diffs) + 
   geom_smooth(method = "lm") + 
   geom_hline(yintercept = 0, lty = 2) + 
   ylab("IDS preference (s)") 
@@ -363,7 +383,7 @@ qplot(age_days, idspref, col = lab, group = 1, data = diffs) +
 By age and by trial. 
 
 ```{r}
-qplot(age_days, idspref, col = lab, group = 1, data = diffs) + 
+qplot(age_days, diff_log, col = lab, group = 1, data = diffs) + 
   geom_smooth(method = "lm") + 
   facet_wrap(~trial_num) + 
   geom_hline(yintercept = 0, lty = 2) + 
@@ -372,11 +392,13 @@ qplot(age_days, idspref, col = lab, group = 1, data = diffs) +
 
 
 # Hypothesis tests
+
 **I would very much recommend including random effects of item, but that info is not included with the data as is.**  
 
 ## Overall preference tests  
 #### One Sample t-test against chance 
 Using log transformed looking time.
+
 ```{r}
 d_t_test1 <- d %>% 
   filter(trial_type != "Train", 
@@ -391,6 +413,7 @@ t.test(d_t_test1$log_lt_diff , mu = 0)
 ```
 
 #### Paired t-test 
+
 As above, but perhaps it is simpler to compare conditions, as our mixed effects models will use a condition predictor. Using log transformed looking time.
 ```{r}
 d_t_test2 <- d %>% 
@@ -404,9 +427,12 @@ t.test(log_lt ~  trial_type, data = d_t_test2, paired = T)
 
 
 ## IDS Preference across age
+
 #### Linear effect of age
+
 Planned regression: 1 + CentredAge * Trial Type + (1 + Centred Age * Trial Type)  
 I removed the by lab interaction to aid convergence.
+
 ```{r}
 d_lmer1 <- d %>% 
   filter(trial_type != "Train", 

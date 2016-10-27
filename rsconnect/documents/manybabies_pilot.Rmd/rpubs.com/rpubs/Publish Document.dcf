@@ -1,7 +1,0 @@
-name: Publish Document
-account: rpubs
-server: rpubs.com
-appId: https://api.rpubs.com/api/v1/document/221418/f002f39b955d431889342ea7a535d1be
-bundleId: https://api.rpubs.com/api/v1/document/221418/f002f39b955d431889342ea7a535d1be
-url: http://rpubs.com/hughrab/221418
-when: 1477343302.83356
