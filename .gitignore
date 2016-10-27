@@ -1,11 +1,9 @@
-<<<<<<< HEAD
 .DS_Store
 *cache
 *files
 rsconnect
 *.xlsx
 .Rhistory
-=======
 manybabies_pilot_cache
 manybabies_pilot_files
->>>>>>> 78e42cb895dc186908f98da7b0a4ef07a6f47b40
+*.html
