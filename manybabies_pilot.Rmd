@@ -463,9 +463,6 @@ summary(lmer(log_lt_diff ~ 1 + (1|lab), data = d_lmer0))
 
 #### Linear effect of age
 
-Planned regression: 1 + CentredAge * Trial Type + (1 + Centred Age * Trial Type)  
-I removed the by lab interaction to aid convergence.
-
 Planned regression: 1 + CentredAge + (1 + Centred Age | lab)  
 
 
@@ -475,7 +472,9 @@ summary(lmer(log_lt_diff ~ 1 + AgeC + (1+ AgeC |lab), data = d_lmer0))
 ```
 
 #### Quadratic effect of age
-Planned regression: 1 + (CentredAge + CentredAge^2) * Trial Type + (1 + (Centred Age + CentredAge ^2) * Trial Type)  
+
+Planned regression: 1 + (CentredAge + CentredAge^2)  + (1 + (Centred Age + CentredAge ^2) "* Trial Type| lab)  
+
 I removed the by lab interaction to aid convergence
 
 ```{r}
