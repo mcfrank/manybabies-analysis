@@ -421,17 +421,28 @@ d_t_test2 <- d %>%
 t.test(log_lt ~  trial_type, data = d_t_test2, paired = T)
 ```
 
+#### Metaregression instead of t-test
+Back to using difference of logs score
+DiffScore ~ 1 (1 | lab)
+```{r}
+d_lmer0 <- d %>% 
+  filter(trial_type != "Train", 
+  looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) %>%
+  group_by(AgeC,subid,lab,trial_type) %>% 
+  summarize(log_lt = mean(log_lt)) %>%
+  filter(n() == 2) %>%
+  mutate(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"])
+
+summary(lmer(log_lt_diff ~ 1 + (1|lab), data = d_lmer0))
+```
 
 ## IDS Preference across age
 #### Linear effect of age
-Planned regression: 1 + CentredAge * Trial Type + (1 + Centred Age * Trial Type)  
-I removed the by lab interaction to aid convergence.
+Planned regression: 1 + CentredAge + (1 + Centred Age | lab)  
 ```{r}
-d_lmer1 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) 
-summary(lmer(log_lt ~ 1 + AgeC * trial_type + (1+ AgeC + trial_type|lab), data = d_lmer1))
+
+summary(lmer(log_lt_diff ~ 1 + AgeC + (1+ AgeC |lab), data = d_lmer0))
 ```
 
 #### Quadratic effect of age
@@ -439,11 +450,7 @@ Planned regression: 1 + (CentredAge + CentredAge^2) * Trial Type + (1 + (Centred
 I removed the by lab interaction to aid convergence
 
 ```{r}
-d_lmer2 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) 
-summary(lmer(log_lt ~ 1 + poly(AgeC,2) * trial_type + (1+ poly(AgeC,2) + trial_type|lab), data = d_lmer2))
+summary(lmer(log_lt_diff ~ 1 + poly(AgeC,2) + (1+ poly(AgeC,2) |lab), data = d_lmer0))
 ```
 
 #### Secondary hypothesis tests, e.g trial order and age. 
