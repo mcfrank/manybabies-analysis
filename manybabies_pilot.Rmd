@@ -1,6 +1,6 @@
 ---
 title: "ManyBabies 1: Pilot Data Analysis"
-author: "Mike Frank, Hugh Rabagliati, and others"
+author: "Mike Frank (edits by Hugh Rabagliati and Melissa Kline)"
 output:
   html_document:
     toc: true
@@ -19,6 +19,12 @@ There are many decision-points that need to be discussed throughout. Among them:
 - What format to ask for data in? 
 - What to do with minimum looking time trials (e.g., record as 2s, record as 0s, exclude)
 - What trials to include in the analysis (e.g., should we include non-looking trials at the end of the experiemnt)?
+
+What if any modifications/clarifications to procedure should we make based on the pilot? *sorry if any of this was already discussed/decided -mk*
+
+- Trial ordering: looks like many labs will use the 'small set of randomized lists' approach; to avoid odd item/trial effects it would be good if 12345678 was not everyone's base list.
+
+- Trial naming: what counts as a trial?  E.g. is IDS5 followed by ADS5 'trial 1, trial 2', or is it 'trial 1, order IDSfirst' This is currently inconsistent between labs.
 
 ```{r Preliminaries, results = "hide", message = FALSE}
 options(dplyr.width = Inf)
@@ -52,6 +58,8 @@ Each participating lab will contribute a `subjects` and a `trials` spreadsheet.
 - `trial_type` [string] - `IDS`, `ADS`, and `training`
 - `stimulus` [string] - `training`, `IDS-X` or `ADS-x` - the actual sound file that was playing
 - `trial_num` [integer] - trial number, from 1 -- 8 (with -2 and -1 denoting training trials)
+- `trial_order` [string] - which stim version played first, `IDSfirst` or `ADSfirst` *or label trials 1---16 for individual sounds*
+- `stim_name` [string] - specific stimulus, eg. `ADS-5`
 - `looking_time` [double] - looking time in seconds
 - `total_trial_time` [double] - total length of the trial
 
@@ -66,8 +74,6 @@ Then these can be merged appropriately.
 
 
 # Load data
-
-
 
 ## Frank data
 
@@ -265,6 +271,10 @@ qplot(age_days, looking_time, col = lab, data = d)
 
 ## Child outcomes
 
+*mk thoughts: do all eyetracking implementations have the same lookaway setting?  One way to deal with this would be to only code looking time after the lookaway period; this would result in more reasonably distributed eyetracking data but also in throwing away a significant chunk of trial data.  On the other hand, it's also strange to consider a dataset with 
+essentially a floor of 2 sec on the data.*
+
+
 Next, are children making it through the experiment? Looks like essentially everyone does.
 
 ```{r}
@@ -305,6 +315,9 @@ ggplot(ms, aes(x = trial_num, y = mean, col = lab)) +
 
 We could plot this as a more classic habituation graph, from habituation.
 
+*mk thoughts - I would lean toward no, UNLESS doing so is currently standard in the field. Serious Q, what would we
+learn about IDS/ADS that we don't from the descriptive stats + difference score tests?*
+
 ```{r}
 last_trial <- d %>%
   group_by(lab, subid) %>%
@@ -344,6 +357,7 @@ diffs <- d %>%
 ```
 
 What's the distributional form of these data? 
+*Is the spike near 0.0 from the stanford 2s kids?*
 
 ```{r}
 qplot(diff, data = diffs) + 
@@ -394,6 +408,10 @@ qplot(age_days, diff_log, col = lab, group = 1, data = diffs) +
 # Hypothesis tests
 
 **I would very much recommend including random effects of item, but that info is not included with the data as is.**  
+*strong agree -mk*
+
+
+*General question: is the goal of the analyses to (1) present what we believe to be the most appropriate analysis? (2) To reflect current practices? (3) to compare the two or (4) something else? -mk*
 
 ## Overall preference tests  
 #### One Sample t-test against chance 
@@ -425,6 +443,21 @@ d_t_test2 <- d %>%
 t.test(log_lt ~  trial_type, data = d_t_test2, paired = T)
 ```
 
+#### Metaregression instead of t-test
+Back to using difference of logs score
+DiffScore ~ 1 (1 | lab)
+```{r}
+d_lmer0 <- d %>% 
+  filter(trial_type != "Train", 
+  looking_time != 0, !is.na(looking_time)) %>%
+  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) %>%
+  group_by(AgeC,subid,lab,trial_type) %>% 
+  summarize(log_lt = mean(log_lt)) %>%
+  filter(n() == 2) %>%
+  mutate(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"])
+
+summary(lmer(log_lt_diff ~ 1 + (1|lab), data = d_lmer0))
+```
 
 ## IDS Preference across age
 
@@ -433,12 +466,12 @@ t.test(log_lt ~  trial_type, data = d_t_test2, paired = T)
 Planned regression: 1 + CentredAge * Trial Type + (1 + Centred Age * Trial Type)  
 I removed the by lab interaction to aid convergence.
 
+Planned regression: 1 + CentredAge + (1 + Centred Age | lab)  
+
+
 ```{r}
-d_lmer1 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) 
-summary(lmer(log_lt ~ 1 + AgeC * trial_type + (1+ AgeC + trial_type|lab), data = d_lmer1))
+
+summary(lmer(log_lt_diff ~ 1 + AgeC + (1+ AgeC |lab), data = d_lmer0))
 ```
 
 #### Quadratic effect of age
@@ -446,11 +479,7 @@ Planned regression: 1 + (CentredAge + CentredAge^2) * Trial Type + (1 + (Centred
 I removed the by lab interaction to aid convergence
 
 ```{r}
-d_lmer2 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) 
-summary(lmer(log_lt ~ 1 + poly(AgeC,2) * trial_type + (1+ poly(AgeC,2) + trial_type|lab), data = d_lmer2))
+summary(lmer(log_lt_diff ~ 1 + poly(AgeC,2) + (1+ poly(AgeC,2) |lab), data = d_lmer0))
 ```
 
 #### Secondary hypothesis tests, e.g trial order and age. 
@@ -458,6 +487,8 @@ We will fit a linear mixed effects model predicting all individual observations,
 log(looking.time) ~ trial.num * stimulus * age + (trial.num * stimulus | subid) + (trial.num * stimulus * age | lab)  
 NB. This is taken from the RRR. Does stimulus here refer to condition or item? I have taken it to refer to condition.  
 Interactions removed to aid convergence.
+
+*mk: why not mixed effects structures in the other models as well?  I think we have 3 sources of random variance we want to model here: random subids nested within random labs, and random stimuli (indivudal items). *
 
 ```{r}
 d_lmer3 <- d %>% 
@@ -470,7 +501,7 @@ summary(lmer(log_lt ~ 1 + AgeC * trial_type * trial_numC + (1+ trial_type + tria
 
 
 ## Christina's Planned Moderator analyses
-These analyses were planned to be by preference score, rather than by interactions. **Iff we are able to include item names in the data files, I would suggest going by interactions instead so that we can account for item effects with regard to, e.g., missing data.**    
+These analyses were planned to be by preference score, rather than by interactions. **Iff we are able to include item names in the data files, I would suggest going by interactions instead so that we can account for item effects with regard to, e.g., missing data.**    *cant we measure item effeects on preference scores too, since the items are paired across condition? -mk*
 
 #### Preference by method
 Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.   
@@ -498,6 +529,11 @@ ids.pref ~ method * age + (1 +age | lab)
 
 summary(lmer(log_lt_diff ~ method*AgeC + (1+AgeC|lab), data = d_moder1))
 ```
+## Melissa's planned 'analysis flexiblity' analysis
+The general idea/approach is to specify a generative model of data inclusion (e.g. select subids to include, trials to include, lt windows to analyze), data analysis (preference vs. difference-from-chance, t test, etc., more things I haven't thought of), and optional stopping, and then to do some simulations of fitting this model to each lab maximizing effect size (essentially simulating 'worst case', intentional p-hacking) as well as some more limited models that e.g. select windows of analysis after data collection, stop early, drop participants, etc in a less nefarious way.
+
+If we have interesting moderator findings, it would also be nice to see e.g. what kinds of sensible measurements you can make on standardized large datasets that you might **not** be able to do on heterogeneous data
+
 
 # Conclusions
 
