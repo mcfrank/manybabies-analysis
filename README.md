@@ -1,7 +1,5 @@
 # ManyBabies Analysis
 
-My attempt at an analytic plan in R(Markdown) for the ManyBabies project. We use
-simulated data to specify (and test) a complete analysis plan in the hopes of not
-stumbling on technical issues later.
+Analysis plan for the [ManyBabies 1 study](https://osf.io/re95x/). Contains both initial simulations and then later analysis of pilot data, fixing analytic decisions for the confirmatory analyses. 
 
-Please contribute any changes or additions!
+Paper draft can be found [here](https://docs.google.com/document/d/1kv3zZ2ylKHlfu779Xw8DaKxUEBHAa56B-4sv-GRvuBU/edit).
