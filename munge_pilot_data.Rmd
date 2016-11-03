@@ -1,0 +1,171 @@
+---
+title: "ManyBabies 1: Data Munging"
+author: "ManyBabies Team"
+output:
+html_document:
+toc: true
+number_sections: true
+code_folding: hide
+highlight: tango
+theme: spacelab
+---
+
+This script will munge all data and produce an output file for processing.
+
+```{r Preliminaries, results = "hide", message = FALSE}
+options(dplyr.width = Inf)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=FALSE)
+library(lme4)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+library(bit64) # necessary because of times from SMI > max integer size
+library(langcog)
+library(knitr)
+library(forcats)
+source("et_helper.R")
+
+theme_set(theme_bw())
+```
+
+## Frank data
+
+Read in eye-tracker pilot data. 
+
+```{r}
+raw_data_path <- "pilot/frank/"
+info_path <- "info/"
+processed_data_path <- "processed_data/frank/"
+
+all_data <- dir(raw_data_path, pattern="*.txt") %>%
+  paste0(raw_data_path, .) %>%
+  map_df(get_smi_header) %>% 
+  split(.$file_name) %>%
+  map_df(read_smi_idf) %>%
+  split(.$file_name) %>%
+  map_df(preprocess_data) 
+```
+
+
+Now extract trial numbers and match with stimuli.
+
+Some items to be fixed:
+
+* Currently we're not actually matching stimuli to trials (this will require parsing eye-tracker XML output)
+* We're missing trial ADS-7; that's a (major) oversight from the experimental setup. 
+* Right now I clip trials < 5, which trims out the two training trials. 
+
+```{r}
+frank_data <- all_data %>% 
+  group_by(file_name, trial, stimulus) %>%
+  summarise(looking_time = sum(dt[!is.na(x) & !is.na(y)]),
+            looking_time = ifelse(is.na(looking_time), 0, looking_time)) %>%
+  mutate(trial_cat = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
+  filter(trial_cat == "speech") %>%
+  group_by(file_name) %>%
+  filter(trial > 5) %>%
+  mutate(trial_num = 1:n(), 
+         subid = str_replace(str_replace(file_name,raw_data_path,""),
+                             ".txt","")) 
+```
+
+Now merge in demographic information. 
+
+```{r}
+suppressWarnings(info <- read_csv("info/frank_demo.csv", col_types = cols()))
+
+frank_data <- info %>% 
+  select(subid, age, order) %>%
+  left_join(frank_data)
+```
+
+Now merge in orders. 
+
+```{r}
+orders <- suppressWarnings(read_csv("info/orders.csv", col_types = cols())) %>%
+  gather(marker, stimulus, 2:19) %>%
+  rename(order = Order) %>%
+  filter(!str_detect(stimulus, "Train")) %>% 
+  group_by(order) %>%
+  mutate(trial_num = 1:n()) %>%
+  separate(stimulus, into = c("trial_type", "stim_num"), sep = -2) %>%
+  select(-marker, -stim_num)
+
+frank_data <- left_join(frank_data, orders) %>%
+  mutate(trial_num = ceiling(trial_num  / 2)) %>%
+  mutate(age_days = as.numeric(age), 
+         lab = "stanford", 
+         method = "eye-tracking") %>%
+  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
+
+```
+
+## Floccia data
+
+```{r}
+floccia_data <- suppressWarnings(read_csv("pilot/floccia/pilot data.csv", 
+                                          col_types = cols())) %>%
+  rename(age_days = age, 
+         looking_time = LT) %>%
+  mutate(subid = as.character(id), 
+         method = "HPP",
+         stimulus = str_replace(str_replace(stimulus, ".wav", ""), 
+                                "Manybabies\\\\", "")) %>%
+  separate(stimulus, into = c("trial_type", "stim_num"), sep = "-") %>%
+  mutate(trial_num = ceiling(trial/2)) %>%
+  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
+
+```
+
+## Hamlin data
+
+```{r}
+hamlin_path <- "pilot/hamlin/"
+hamlin_data <- dir(hamlin_path, pattern="*.csv") %>%
+  paste0(hamlin_path, .) %>%
+  map_df(function(x) {suppressWarnings(read_csv(x, col_types = cols())) %>% 
+      mutate(order = x)}) %>%
+  mutate(order = as.numeric(str_replace(str_replace(order, ".csv",""),
+                                        "pilot/hamlin/order",""))) %>%
+  gather(trial, looking_time, 
+         starts_with("Train"), starts_with("IDS"), starts_with("ADS")) %>%
+  separate(trial, into = c("trial_type","trial_num"), sep = -2) %>%
+  mutate(lab = "ubc",
+         method = "single-screen",
+         trial_num = as.numeric(trial_num), 
+         age_days = str_split(age, ";") %>% 
+           map_dbl(function(x) as.numeric(x[1]) * 30.3 + as.numeric(x[2]))) %>%
+  rename(subid = subnum) %>%
+  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
+```
+
+## Gonzalez-Gomez data
+
+Looks - LooksAway = LookingTime, per email from NGG. 
+
+```{r}
+gonzalez_data <- suppressWarnings(read_csv("pilot/gonzalez/long_data.csv", 
+                                           col_types = cols())) %>%
+  mutate(lab = "brookes", 
+         method = "single-screen",
+         subid = SubjectID, 
+         age_days = as.numeric(str_replace(age_mo, "m", ""))*30.3,
+         trial_type = ifelse(str_detect(StimName, "Trial"), "Train",
+                             ifelse(str_detect(StimName, "IDS"), "IDS", "ADS")), 
+         trial_num = floor((Trial+1)/2), 
+         looking_time = (TotalLook - TotalLookAway)/1000) %>%
+  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
+```
+
+## Merge all data 
+
+This is what the eventual data frame looks like:
+
+```{r}
+d <- bind_rows(floccia_data, hamlin_data, frank_data, gonzalez_data)
+kable(head(d))
+```
+
+```{r}
+write_csv(d, "processed_data/pilot_data.csv")
+```
