@@ -1,6 +1,6 @@
 ---
 title: "ManyBabies 1: Pilot Data Analysis"
-author: "Mike Frank (edits by Hugh Rabagliati and Melissa Kline)"
+author: "ManyBabies Analysis Group (inc. Mike Frank, Hugh Rabagliati, Melissa Kline)"
 output:
   html_document:
     toc: true
@@ -14,204 +14,51 @@ This document shows an analysis of MB1 pilot data for purposes of procedural and
 
 Please forgive errors, omissions, lack of clearly labeled axes, etc. This document was produced quickly to provide an initial guide for decision-making. 
 
-There are many decision-points that need to be discussed throughout. Among them:
+# Decision points
 
-- What format to ask for data in? 
-- What to do with minimum looking time trials (e.g., record as 2s, record as 0s, exclude)
-- What trials to include in the analysis (e.g., should we include non-looking trials at the end of the experiemnt)?
+There are many decision-points that need to be discussed throughout. 
 
-What if any modifications/clarifications to procedure should we make based on the pilot? *sorry if any of this was already discussed/decided -mk*
+**Data formatting**: Data upload script plus templates are [here](https://docs.google.com/document/d/1SqUJIwvswVa2-8W_ijJBIO2NE9AR7FI1Q9DT15vWlZE/edit?usp=drive_web). They are designed to make merging demographic data easy. Please take a look.
 
-- Trial ordering: looks like many labs will use the 'small set of randomized lists' approach; to avoid odd item/trial effects it would be good if 12345678 was not everyone's base list.
+**Exclusion criteria**: Are listed in [the manuscript](https://docs.google.com/document/d/1kv3zZ2ylKHlfu779Xw8DaKxUEBHAa56B-4sv-GRvuBU/edit):
 
-- Trial naming: what counts as a trial?  E.g. is IDS5 followed by ADS5 'trial 1, trial 2', or is it 'trial 1, order IDSfirst' This is currently inconsistent between labs.
+Participants must be:
+- monolingual (>90%)
+- full term (37+ weeks)
+- looking on at least one pair of test trials (a matched IDS/ADS pair)
+
+Trials must be:
+- longer than 2s (to allow viewing of the stimulus)
+
+
+Decision points:
+
+- Any other exclusions?
+- Use of a meta-analytic model or a mixed-effects model?
+- How to compute standardized effect size (see the relevant section)
+- Any procedural modifications?
+
+# Analytic Preliminaries
 
 ```{r Preliminaries, results = "hide", message = FALSE}
 options(dplyr.width = Inf)
-knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache=FALSE)
-library(lme4)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache = TRUE)
 library(tidyverse)
-library(stringr)
-library(lubridate)
-library(bit64) # necessary because of times from SMI > max integer size
-library(langcog)
 library(knitr)
-library(forcats)
-source("et_helper.R")
+library(langcog)
+library(metafor)
+library(lme4)
 
 theme_set(theme_bw())
 ```
 
-In general, based on the experiences below, we probably want to have three different spreadsheets:
-
-- `labs` - this has lab and method info
-- `subjects` - this has demographics for each subject
-- `trials` - this has long-form trial data 
-
-Each participating lab will contribute a `subjects` and a `trials` spreadsheet.
-
-1. `trials` spreadsheet is a long-form data sheet. Each row is a trial. Columns are:
-
-- `lab` [string] - unique identifier
-- `subid` [string] - unique within-lab ID
-- `age_days` [integer] - chronological age
-- `trial_type` [string] - `IDS`, `ADS`, and `training`
-- `stimulus` [string] - `training`, `IDS-X` or `ADS-x` - the actual sound file that was playing
-- `trial_num` [integer] - trial number, from 1 -- 8 (with -2 and -1 denoting training trials)
-- `trial_order` [string] - which stim version played first, `IDSfirst` or `ADSfirst` *or label trials 1---16 for individual sounds*
-- `stim_name` [string] - specific stimulus, eg. `ADS-5`
-- `looking_time` [double] - looking time in seconds
-- `total_trial_time` [double] - total length of the trial
-
-2. `subjects` spreadsheet is a long-form data sheet. Each row is a subject. Columns are:
-
-- `lab` [string] - unique lab identifier
-- `subid` [string] - unique ID 
-- `method` [string] - `eye-tracking`, `HPP`, `single screen`
-
-
-Then these can be merged appropriately. 
-
-
-# Load data
-
-## Frank data
-
-Read in eye-tracker pilot data. 
+**NOTE**: Loading data computed in `munge_pilot_data.Rmd`.
 
 ```{r}
-raw_data_path <- "pilot/frank/"
-info_path <- "info/"
-processed_data_path <- "processed_data/frank/"
-
-all_data <- dir(raw_data_path, pattern="*.txt") %>%
-  paste0(raw_data_path, .) %>%
-  map_df(get_smi_header) %>% 
-  split(.$file_name) %>%
-  map_df(read_smi_idf) %>%
-  split(.$file_name) %>%
-  map_df(preprocess_data) 
+d <- suppressWarnings(read_csv("processed_data/pilot_data.csv", col_types = cols()))
 ```
 
-
-Now extract trial numbers and match with stimuli.
-
-Some items to be fixed:
-
-* Currently we're not actually matching stimuli to trials (this will require parsing eye-tracker XML output)
-* We're missing trial ADS-7; that's a (major) oversight from the experimental setup. 
-* Right now I clip trials < 5, which trims out the two training trials. 
-
-```{r}
-frank_data <- all_data %>% 
-  group_by(file_name, trial, stimulus) %>%
-  summarise(looking_time = sum(dt[!is.na(x) & !is.na(y)]),
-            looking_time = ifelse(is.na(looking_time), 0, looking_time)) %>%
-  mutate(trial_cat = ifelse(str_detect(stimulus, ".jpg"), "speech","other")) %>%
-  filter(trial_cat == "speech") %>%
-  group_by(file_name) %>%
-  filter(trial > 5) %>%
-  mutate(trial_num = 1:n(), 
-         subid = str_replace(str_replace(file_name,raw_data_path,""),
-                           ".txt","")) 
-```
-
-Now merge in demographic information. 
-
-```{r}
-suppressWarnings(info <- read_csv("info/frank_demo.csv", col_types = cols()))
-
-frank_data <- info %>% 
-  select(subid, age, order) %>%
-  left_join(frank_data)
-```
-
-Now merge in orders. 
-
-```{r}
-orders <- suppressWarnings(read_csv("info/orders.csv", col_types = cols())) %>%
-  gather(marker, stimulus, 2:19) %>%
-  rename(order = Order) %>%
-  filter(!str_detect(stimulus, "Train")) %>% 
-  group_by(order) %>%
-  mutate(trial_num = 1:n()) %>%
-  separate(stimulus, into = c("trial_type", "stim_num"), sep = -2) %>%
-  select(-marker, -stim_num)
-
-frank_data <- left_join(frank_data, orders) %>%
-  mutate(trial_num = ceiling(trial_num  / 2)) %>%
-  mutate(age_days = as.numeric(age), 
-         lab = "stanford", 
-         method = "eye-tracking") %>%
-  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
-
-```
-
-## Floccia data
-
-```{r}
-floccia_data <- suppressWarnings(read_csv("pilot/floccia/pilot data.csv", 
-                                          col_types = cols())) %>%
-  rename(age_days = age, 
-         looking_time = LT) %>%
-  mutate(subid = as.character(id), 
-         method = "HPP",
-         stimulus = str_replace(str_replace(stimulus, ".wav", ""), 
-                                "Manybabies\\\\", "")) %>%
-  separate(stimulus, into = c("trial_type", "stim_num"), sep = "-") %>%
-  mutate(trial_num = ceiling(trial/2)) %>%
-  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
-         
-```
-
-## Hamlin data
-
-```{r}
-hamlin_path <- "pilot/hamlin/"
-hamlin_data <- dir(hamlin_path, pattern="*.csv") %>%
-  paste0(hamlin_path, .) %>%
-  map_df(function(x) {suppressWarnings(read_csv(x, col_types = cols())) %>% 
-      mutate(order = x)}) %>%
-  mutate(order = as.numeric(str_replace(str_replace(order, ".csv",""),
-                                        "pilot/hamlin/order",""))) %>%
-  gather(trial, looking_time, 
-         starts_with("Train"), starts_with("IDS"), starts_with("ADS")) %>%
-  separate(trial, into = c("trial_type","trial_num"), sep = -2) %>%
-  mutate(lab = "ubc",
-         method = "single-screen",
-         trial_num = as.numeric(trial_num), 
-         age_days = str_split(age, ";") %>% 
-           map_dbl(function(x) as.numeric(x[1]) * 30.3 + as.numeric(x[2]))) %>%
-  rename(subid = subnum) %>%
-  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
-```
-
-## Gonzalez-Gomez data
-
-```{r}
-gonzalez_data <- suppressWarnings(read_csv("pilot/gonzalez/long_data.csv", 
-                                           col_types = cols())) %>%
-  mutate(lab = "brookes", 
-         method = "single-screen",
-         subid = SubjectID, 
-         age_days = as.numeric(str_replace(age_mo, "m", ""))*30.3,
-         trial_type = ifelse(str_detect(StimName, "trial"), "Train",
-                             ifelse(str_detect(StimName, "IDS"), "IDS", "ADS")), 
-         trial_num = floor((Trial+1)/2), 
-         looking_time = TotalLook/1000) %>%
-  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
-```
-
-## Merge all data 
-
-This is what the eventual data frame looks like:
-
-```{r}
-d <- bind_rows(floccia_data, hamlin_data, frank_data, gonzalez_data)
-kable(head(d))
-```
-
-# Descriptives and Exclusions
+How many participants in each group?
 
 ```{r}
 d %>%
@@ -222,12 +69,14 @@ d %>%
             age_months = mean(age_days)/30.3) %>%
   kable(digits = 1)
 ```
+
 ## Exclusions
 
 This is an important decision-point. At least we want to exclude:
 
 - Children with no looking time
-- Trials with no looking time
+- Trials with no looking time 
+- Trials with looking time below 2s - QUESTION: do we want to exclude for less than 2s _trial time_ or _looking time_? 
 
 ```{r}
 lt_totals <- d %>%
@@ -237,45 +86,46 @@ lt_totals <- d %>%
 d <- d %>%
   left_join(lt_totals) %>%
   filter(total_looking_time != 0, 
-         !is.na(total_looking_time)) %>%
-  mutate(looking_time = ifelse(looking_time == 0, NA, looking_time))
+         !is.na(total_looking_time), 
+         trial_type %in% c("IDS","ADS")) %>%
+  mutate(looking_time = ifelse(looking_time < 2, NA, looking_time))
   
 
 ```
 
 ## Demographics
 
-What's our participant distribution?
+What's our participant age distribution?
 
 ```{r}
 subs <- d %>%
   group_by(lab, subid, age_days) %>%
   distinct
 
-qplot(age_days, fill = lab, data=subs)
+qplot(age_days/30.3, binwidth = 1, fill = lab, data=subs) + 
+  xlab("Age (months)")
 ```
 
 ## Looking time dynamics
 
-First, the overall distribution of looking times. 
+First, the overall distribution of looking times. Note, Brookes data goes to 30s due to an error in coding the experiment.
 
 ```{r}
-qplot(looking_time, fill = lab, facets = ~ lab, binwidth = 2, data = d)
+qplot(looking_time, fill = lab, facets = ~ lab, binwidth = 1, data = d) + 
+  xlim(0,30) + 
+  xlab("Looking time (s)")
 ```
 
 Stanford has a large number of 2s looking times because that's the lookaway from the tracker. So when a child isn't looking at all, they get a 2s. *How should we deal with this?*
 
 ```{r}
-qplot(age_days, looking_time, col = lab, data = d)
+qplot(age_days, looking_time, col = lab, data = d) + 
+  geom_smooth(aes(group=1), method = "lm")
 ```
 
 ## Child outcomes
 
-*mk thoughts: do all eyetracking implementations have the same lookaway setting?  One way to deal with this would be to only code looking time after the lookaway period; this would result in more reasonably distributed eyetracking data but also in throwing away a significant chunk of trial data.  On the other hand, it's also strange to consider a dataset with 
-essentially a floor of 2 sec on the data.*
-
-
-Next, are children making it through the experiment? Looks like essentially everyone does.
+Next, are children making it through the experiment? Once exclusions are computed, we see that many kids are habituating and are not making it throughout the study. 
 
 ```{r}
 d %>%
@@ -285,20 +135,20 @@ d %>%
   kable(digits = 2)
 ```
 
-Now, histogram of looking time by trial number. Looks like looking times are staying pretty long. 
+Now, histogram of looking time by trial number. Looks like looking times are declining across trials, but not tremendously.
 
 ```{r}
-ggplot(d, aes(x = looking_time, fill = lab)) + 
-  geom_histogram(binwidth = 2) + 
-  facet_wrap(~trial_num)
+ms <- d %>%
+  group_by(trial_num) %>%
+  summarise(looking_time = mean(looking_time, na.rm=TRUE))
+
+ggplot(d, aes(x = looking_time)) + 
+  geom_histogram(binwidth = 1, aes(fill = lab)) + 
+  geom_vline(data = ms, aes(xintercept = looking_time), lty = 2) + 
+  facet_wrap(~trial_num) + 
+  xlim(c(0,30))
 ```
 
-We can look at this by age, too. 
-
-```{r}
-qplot(age_days, looking_time, col = lab, facets = ~ trial_num, data = d) + 
-  geom_smooth(aes(group = 1), method = "lm", col = "black")
-```
 
 Plot means. Note that this graph has survivorship bias -- namely, those observations later in the graph represent kids that had more trials. 
 
@@ -313,234 +163,300 @@ ggplot(ms, aes(x = trial_num, y = mean, col = lab)) +
                  position = position_dodge(width = .1)) 
 ```
 
-We could plot this as a more classic habituation graph, from habituation.
 
-*mk thoughts - I would lean toward no, UNLESS doing so is currently standard in the field. Serious Q, what would we
-learn about IDS/ADS that we don't from the descriptive stats + difference score tests?*
+# IDS-ADS condition differences
+
+We will be pursuing a within-subjects analysis approach, so almost all of our analysis will happen over pairs of trials. The downside of this approach is that if you are missing data from one of the trials in a pair, you are missing the difference score for that pair.  
 
 ```{r}
-last_trial <- d %>%
-  group_by(lab, subid) %>%
-  summarise(max_trial = max(trial_num[!is.na(looking_time)])) 
-
-ms <- d %>%
-  left_join(last_trial) %>%
-  mutate(trial_num_habit = trial_num - max_trial) %>%
-  group_by(lab, trial_num_habit) %>%
-  multi_boot_standard(col = "looking_time", na.rm=TRUE)
-
-ggplot(ms, aes(x = trial_num_habit, y = mean, col = lab)) + 
-  geom_smooth(se=FALSE, span = 1) +
-  geom_point() + 
-  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), 
-                 position = position_dodge(width = .1)) + 
-  xlab("Trials to habituation/experiment end") + 
-  xlim(-7.1,0.1)
+diffs <-  d %>%
+  select(-total_looking_time) %>%
+  spread(trial_type, looking_time) %>%
+  mutate(diff = IDS - ADS) 
 ```
 
-# Condition differences
+# Distribution
 
-For each pair of trials, subtract to get the difference score. Again following Csibra, we do a difference of logs. 
-
-```{r}
-diffs <- d %>%
-  filter(trial_type != "Train", 
-         looking_time != 0, 
-         !is.na(looking_time)) %>%
-  group_by(lab, subid, age_days, trial_num) %>%
-  filter(sum(trial_type=="IDS") == 1 & 
-           sum(trial_type=="ADS") == 1) %>% # take only pairs that are complete
-  summarise(diff = looking_time[trial_type=="IDS"] - 
-              looking_time[trial_type=="ADS"],
-            diff_log = log10(looking_time[trial_type=="IDS"]) - 
-              log10(looking_time[trial_type=="ADS"]))
-```
-
-What's the distributional form of these data? 
-*Is the spike near 0.0 from the stanford 2s kids?*
+What's the distributional form of these difference score data? 
 
 ```{r}
-qplot(diff, data = diffs) + 
+qplot(diff, binwidth = 1, 
+      data = filter(diffs, !is.na(diff))) + 
   geom_vline(xintercept = mean(diffs$diff), col = "red", lty = 2) 
 ```
+Interestingly, it's not skewed, but it does have very overdispersed shape with a big strong peak in the middle and then long tails). 
+
+Note spike near 0 is not due to low-looking time Stanford kids because LTs < 2s have been removed. This is legitimate data. 
+
+But: `r round(mean(is.na(diffs$diff)), digits = 2)` of LTs have missing data. That's problematic.
 
 ```{r}
-qplot(diff_log, data = diffs) + 
-  geom_vline(xintercept = mean(diffs$diff_log), col = "red", lty = 2) 
+diffs %>%
+  group_by(lab) %>%
+  summarise(missing = mean(is.na(diff))) %>%
+              kable(digits = 2)
 ```
 
-How do they change with trials?
+Stanford data are almost all missing! In hindsight, kids were old, the eye-tracker didn't pick them up, looks were very short, etc. 
+
+# IDS-ADS difference patterns
+
+How does the IDS-ADS difference change with trials?
 
 ```{r}
 ms_diff <- diffs %>%
+  
   group_by(lab, trial_num) %>%
-  multi_boot_standard(col = "diff_log", na.rm=TRUE)
+  multi_boot_standard(col = "diff", na.rm=TRUE)
 
 ggplot(ms_diff, aes(x = trial_num, y = mean)) +
          geom_smooth(se = FALSE, span = 2) + 
   facet_wrap(~lab) + 
   geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
                  position = position_dodge(width= .1)) +
-  ylab("IDS preference (log10 s)") + 
+  ylab("IDS preference (s)") + 
   geom_hline(yintercept = 0, lty = 2)
 ```
 
-Or with age? 
+Brookes and Stanford both have a number of trials wehre there is essentially no data to estimate. In contrast, if anything, UBC shows hints of a preference by the end of the study, with longer looks all throughout (and much younger babies). 
+
+How does difference change with age? (by subject) 
 
 ```{r}
-qplot(age_days, diff_log, col = lab, group = 1, data = diffs) + 
+mss_diffs <- diffs %>%
+  group_by(lab, subid) %>%
+  summarise(age_days = mean(age_days), 
+            diff = mean(diff, na.rm=TRUE))
+
+qplot(age_days, diff, col = lab, group = 1, data = mss_diffs) + 
   geom_smooth(method = "lm") + 
   geom_hline(yintercept = 0, lty = 2) + 
   ylab("IDS preference (s)") 
 ```
          
-By age and by trial. 
+
+# Meta-analytic approach
+
+Following suggestions by Alex Cristia, who argued that this is a more straightforward approach and also has been followed in ManyLabs and the RRRs previously. In addition, it doesn't require knowing the full form of the required mixed-effects model (e.g., trial order effects, age x trial order interactions, quadratic habituation, etc.).
+
+Compute effect size for each lab. This analysis follows the recommendation in [Jake Westfall's blogpost](http://jakewestfall.org/blog/index.php/2016/03/25/five-different-cohens-d-statistics-for-within-subject-designs/), which says that "classic" Cohen's $d$ is the difference of the means divided by the pooled standard deviation across conditions. 
 
 ```{r}
-qplot(age_days, diff_log, col = lab, group = 1, data = diffs) + 
+source("ma_helper.R")
+
+ages <- d %>%
+  group_by(lab, subid) %>%
+  summarise(age_days = mean(age_days)) %>%
+  summarise(age_days = mean(age_days))
+  
+ds <- diffs %>%
+  group_by(lab, method) %>%
+  summarise(d = mean(IDS - ADS, na.rm=TRUE) / 
+              sqrt(mean(diag(var(cbind(IDS, ADS), na.rm=TRUE)))), 
+            n = length(unique(subid)), 
+            d_var = d_var_calc(n,d)) %>%
+  left_join(ages)
+```
+
+```{r}
+ggplot(ds, aes(x = age_days, y = d)) + 
+  geom_point(aes(size = n, col = method)) + 
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
   geom_smooth(method = "lm") + 
-  facet_wrap(~trial_num) + 
-  geom_hline(yintercept = 0, lty = 2) + 
-  ylab("IDS preference (s)") 
+  # scale_colour_solarized(name = "", labels = labels, guide = guide) +
+  scale_size_continuous(guide = FALSE) +
+  xlab("\nMean Subject Age (Months)") +
+  ylab("Effect Size\n")
 ```
 
-
-# Hypothesis tests
-
-**I would very much recommend including random effects of item, but that info is not included with the data as is.**  
-*strong agree -mk*
-
-
-*General question: is the goal of the analyses to (1) present what we believe to be the most appropriate analysis? (2) To reflect current practices? (3) to compare the two or (4) something else? -mk*
-
-## Overall preference tests  
-#### One Sample t-test against chance 
-Using log transformed looking time.
+Model with no age moderation.
 
 ```{r}
-d_t_test1 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time)) %>% 
-  group_by(subid,trial_type) %>% 
-  summarise(log_lt = mean(log_lt)) %>%
-  group_by(subid) %>% 
-  filter(n() == 2) %>%
-  summarize(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"])
-t.test(d_t_test1$log_lt_diff , mu = 0)
+mod <- metafor::rma(d ~ 1, vi = d_var, slab = lab, data = ds, method = "REML") 
+summary(mod)
 ```
-
-#### Paired t-test 
-
-As above, but perhaps it is simpler to compare conditions, as our mixed effects models will use a condition predictor. Using log transformed looking time.
-```{r}
-d_t_test2 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time)) %>% 
-  group_by(subid,trial_type) %>% 
-  summarise(log_lt = mean(log_lt))
-t.test(log_lt ~  trial_type, data = d_t_test2, paired = T)
-```
-
-#### Metaregression instead of t-test
-Back to using difference of logs score
-DiffScore ~ 1 (1 | lab)
-```{r}
-d_lmer0 <- d %>% 
-  filter(trial_type != "Train", 
-  looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days)) %>%
-  group_by(AgeC,subid,lab,trial_type) %>% 
-  summarize(log_lt = mean(log_lt)) %>%
-  filter(n() == 2) %>%
-  mutate(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"])
-
-summary(lmer(log_lt_diff ~ 1 + (1|lab), data = d_lmer0))
-```
-
-## IDS Preference across age
-
-#### Linear effect of age
-
-Planned regression: 1 + CentredAge + (1 + Centred Age | lab)  
-
 
 ```{r}
+f <- fitted(mod)
+p <- predict(mod)
 
-summary(lmer(log_lt_diff ~ 1 + AgeC + (1+ AgeC |lab), data = d_lmer0))
+alpha <- .05
+
+forest_data <- data.frame(effects = as.numeric(mod$yi.f),
+                          variances = mod$vi.f) %>%
+  mutate(effects.cil = effects -
+           qnorm(alpha / 2, lower.tail = FALSE) * sqrt(variances),
+         effects.cih = effects +
+           qnorm(alpha / 2, lower.tail = FALSE) * sqrt(variances),
+         estimate = as.numeric(f),
+         lab = names(f),
+         estimate.cil = p$ci.lb,
+         estimate.cih = p$ci.ub,
+         inverse_vars = 1/variances,
+         identity = 1) %>%
+  left_join(ds) 
+
+qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
+        geom = "linerange",
+        data = forest_data) +
+    geom_point(aes(y = effects, size = inverse_vars, col = method)) +
+    geom_pointrange(aes(x = lab, y = estimate,
+                               ymin = estimate.cil, ymax = estimate.cih),
+                    pch = 17) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
+    coord_flip() +
+    scale_size_continuous(guide = FALSE) +
+    scale_colour_solarized() +
+    xlab("") +
+    ylab("Effect Size")
+
 ```
 
-#### Quadratic effect of age
-
-Planned regression: 1 + (CentredAge + CentredAge^2)  + (1 + (Centred Age + CentredAge ^2) "* Trial Type| lab)  
-
-I removed the by lab interaction to aid convergence
+Model with age moderation.
 
 ```{r}
-summary(lmer(log_lt_diff ~ 1 + poly(AgeC,2) + (1+ poly(AgeC,2) |lab), data = d_lmer0))
+mod <- metafor::rma(d ~ age_days, vi = d_var, slab = lab, data = ds, method = "REML") 
+summary(mod)
 ```
 
-#### Secondary hypothesis tests, e.g trial order and age. 
-We will fit a linear mixed effects model predicting all individual observations, with the structure:  
-log(looking.time) ~ trial.num * stimulus * age + (trial.num * stimulus | subid) + (trial.num * stimulus * age | lab)  
-NB. This is taken from the RRR. Does stimulus here refer to condition or item? I have taken it to refer to condition.  
-Interactions removed to aid convergence.
+Model with age x language interaction. (Not shown because right now we only have English data. 
 
-*mk: why not mixed effects structures in the other models as well?  I think we have 3 sources of random variance we want to model here: random subids nested within random labs, and random stimuli (indivudal items). *
+```{r, eval = FALSE}
+ds$language <- "english"
+mod <- metafor::rma(d ~ age_days * language, vi = d_var, slab = lab, data = ds, method = "REML") 
+summary(mod)
+```
+
+
+Model with method moderation.
 
 ```{r}
-d_lmer3 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days),trial_numC = (trial_num - mean(trial_num))/sd(trial_num)) 
-summary(lmer(log_lt ~ 1 + AgeC * trial_type * trial_numC + (1+ trial_type + trial_numC|subid)+ (1+ AgeC + trial_type + trial_numC|lab) , data = d_lmer3))
+mod <- metafor::rma(d ~ method, vi = d_var, slab = lab, data = ds, method = "REML") 
+summary(mod)
 ```
 
+# Mixed effects approach
 
+This approach is based on modeling *all* difference scores.
 
-## Christina's Planned Moderator analyses
-These analyses were planned to be by preference score, rather than by interactions. **Iff we are able to include item names in the data files, I would suggest going by interactions instead so that we can account for item effects with regard to, e.g., missing data.**    *cant we measure item effeects on preference scores too, since the items are paired across condition? -mk*
+**Decision point**: will we log transform? Take differences? Take log differences or difference of logs?
 
-#### Preference by method
-Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.   
-ids.pref ~ method + (1 | lab)
+**These models all need item effects but we don't have item data in the dataframe yet.**
+
+## Simple models
+
+This is the most basic model:
 
 ```{r}
-d_moder1 <- d %>% 
-  filter(trial_type != "Train", 
-         looking_time != 0, !is.na(looking_time)) %>%
-  mutate(log_lt = log(looking_time),AgeC = (age_days - mean(age_days))/sd(age_days)) %>% 
-  group_by(subid,trial_type,method,lab,AgeC) %>% 
-  summarise(log_lt = mean(log_lt)) %>%
-  group_by(subid,method,lab,AgeC) %>% 
-  filter(n() == 2) %>%
-  summarize(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"])
+d_lmer <- diffs %>% 
+  filter(!is.na(diff)) %>%
+  mutate(age_centered = scale(age_days))
 
-summary(lmer(log_lt_diff ~ method + (1|lab), data = d_moder1))
+summary(lmer(diff ~ 1 + 
+               (1 | lab) + 
+               (1 | subid) , data = d_lmer))
 ```
 
-#### Preference by method interacting with age
-Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.   
-ids.pref ~ method * age + (1 +age | lab)
+and age effects. 
 
 ```{r}
-
-summary(lmer(log_lt_diff ~ method*AgeC + (1+AgeC|lab), data = d_moder1))
+summary(lmer(diff ~ age_centered + 
+               (age_centered | lab) + 
+               (1 | subid) , data = d_lmer))
 ```
-## Melissa's planned 'analysis flexiblity' analysis
-The general idea/approach is to specify a generative model of data inclusion (e.g. select subids to include, trials to include, lt windows to analyze), data analysis (preference vs. difference-from-chance, t test, etc., more things I haven't thought of), and optional stopping, and then to do some simulations of fitting this model to each lab maximizing effect size (essentially simulating 'worst case', intentional p-hacking) as well as some more limited models that e.g. select windows of analysis after data collection, stop early, drop participants, etc in a less nefarious way.
 
-If we have interesting moderator findings, it would also be nice to see e.g. what kinds of sensible measurements you can make on standardized large datasets that you might **not** be able to do on heterogeneous data
+Neither of these models take into account the shape of the habituation curve or how preference might manifest across it. 
+
+## More complete model
+
+Add trial number X age interaction.
+
+```{r}
+summary(lmer(diff ~ age_centered * trial_num + 
+               (age_centered * trial_num | lab) + 
+               (trial_num | subid) , data = d_lmer))
+```
+
+and the quadratic version of that analysis. 
+
+```{r}
+summary(lmer(diff ~ age_centered * trial_num + 
+               (age_centered * trial_num | lab) + 
+               (trial_num | subid) , data = d_lmer))
+```
 
 
-# Conclusions
+<!-- ## IDS Preference across age -->
 
-Practical recommendations:
+<!-- #### Linear effect of age -->
 
-- Need to make standardized templates for `lab`, `subject`, and `trial` data. 
-- Need to develop policies for data exclusion at the subject level (e.g., any child excluded)
-- Need to walk through and select the planned analyses - this is going to be tricky!
+<!-- Planned regression: 1 + CentredAge + (1 + Centred Age | lab)   -->
 
-Conclusions: It looks like we're seeing some IDS preference for each group, albeit at a different part of the experiment for each age/lab combo.
- 
+
+<!-- ```{r} -->
+
+<!-- summary(lmer(log_lt_diff ~ 1 + AgeC + (1+ AgeC |lab), data = d_lmer0)) -->
+<!-- ``` -->
+
+<!-- #### Quadratic effect of age -->
+
+<!-- Planned regression: 1 + (CentredAge + CentredAge^2)  + (1 + (Centred Age + CentredAge ^2) "* Trial Type| lab)   -->
+
+<!-- I removed the by lab interaction to aid convergence -->
+
+<!-- ```{r} -->
+<!-- summary(lmer(log_lt_diff ~ 1 + poly(AgeC,2) + (1+ poly(AgeC,2) |lab), data = d_lmer0)) -->
+<!-- ``` -->
+
+<!-- #### Secondary hypothesis tests, e.g trial order and age.  -->
+<!-- We will fit a linear mixed effects model predicting all individual observations, with the structure:   -->
+<!-- log(looking.time) ~ trial.num * stimulus * age + (trial.num * stimulus | subid) + (trial.num * stimulus * age | lab)   -->
+<!-- NB. This is taken from the RRR. Does stimulus here refer to condition or item? I have taken it to refer to condition.   -->
+<!-- Interactions removed to aid convergence. -->
+
+<!-- *mk: why not mixed effects structures in the other models as well?  I think we have 3 sources of random variance we want to model here: random subids nested within random labs, and random stimuli (indivudal items). * -->
+
+<!-- ```{r} -->
+<!-- d_lmer3 <- d %>%  -->
+<!--   filter(trial_type != "Train",  -->
+<!--          looking_time != 0, !is.na(looking_time)) %>% -->
+<!--   mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days),trial_numC = (trial_num - mean(trial_num))/sd(trial_num))  -->
+<!-- summary(lmer(log_lt ~ 1 + AgeC * trial_type * trial_numC + (1+ trial_type + trial_numC|subid)+ (1+ AgeC + trial_type + trial_numC|lab) , data = d_lmer3)) -->
+<!-- ``` -->
+
+
+
+<!-- ## Christina's Planned Moderator analyses -->
+<!-- These analyses were planned to be by preference score, rather than by interactions. **Iff we are able to include item names in the data files, I would suggest going by interactions instead so that we can account for item effects with regard to, e.g., missing data.**    *cant we measure item effeects on preference scores too, since the items are paired across condition? -mk* -->
+
+<!-- #### Preference by method -->
+<!-- Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.    -->
+<!-- ids.pref ~ method + (1 | lab) -->
+
+<!-- ```{r} -->
+<!-- d_moder1 <- d %>%  -->
+<!--   filter(trial_type != "Train",  -->
+<!--          looking_time != 0, !is.na(looking_time)) %>% -->
+<!--   mutate(log_lt = log(looking_time),AgeC = (age_days - mean(age_days))/sd(age_days)) %>%  -->
+<!--   group_by(subid,trial_type,method,lab,AgeC) %>%  -->
+<!--   summarise(log_lt = mean(log_lt)) %>% -->
+<!--   group_by(subid,method,lab,AgeC) %>%  -->
+<!--   filter(n() == 2) %>% -->
+<!--   summarize(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"]) -->
+
+<!-- summary(lmer(log_lt_diff ~ method + (1|lab), data = d_moder1)) -->
+<!-- ``` -->
+
+<!-- #### Preference by method interacting with age -->
+<!-- Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.    -->
+<!-- ids.pref ~ method * age + (1 +age | lab) -->
+
+<!-- ```{r} -->
+
+<!-- summary(lmer(log_lt_diff ~ method*AgeC + (1+AgeC|lab), data = d_moder1)) -->
+<!-- ``` -->
+<!-- ## Melissa's planned 'analysis flexiblity' analysis -->
+<!-- The general idea/approach is to specify a generative model of data inclusion (e.g. select subids to include, trials to include, lt windows to analyze), data analysis (preference vs. difference-from-chance, t test, etc., more things I haven't thought of), and optional stopping, and then to do some simulations of fitting this model to each lab maximizing effect size (essentially simulating 'worst case', intentional p-hacking) as well as some more limited models that e.g. select windows of analysis after data collection, stop early, drop participants, etc in a less nefarious way. -->
+
+<!-- If we have interesting moderator findings, it would also be nice to see e.g. what kinds of sensible measurements you can make on standardized large datasets that you might **not** be able to do on heterogeneous data -->
+
