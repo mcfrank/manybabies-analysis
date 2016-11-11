@@ -385,7 +385,7 @@ d_lmer <- d %>%
          language = ifelse(lab %in% c("brookes","plymouth"), "non-NAE", "NAE")) %>%
   filter(!is.na(log_lt), !is.infinite(log_lt))
 
-mod <- lmer(log_lt ~ method + age_days * trial_num + age_days * language + 
+mod <- lmer(log_lt ~ trial_type * method + age_days * trial_num + trial_type * age_days * language + 
                + (trial_num | subid) 
              + (age_days | lab), data = d_lmer)
 
