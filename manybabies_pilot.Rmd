@@ -90,7 +90,11 @@ d <- d %>%
          trial_type %in% c("IDS","ADS")) %>%
   mutate(looking_time = ifelse(looking_time < 2, NA, looking_time))
   
+total_trials <- d %>%
+  group_by(lab, subid) %>%
+  summarise(n_trials = sum(!is.na(looking_time))) 
 
+qplot(n_trials, fill = lab, data= total_trials)
 ```
 
 ## Demographics
