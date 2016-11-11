@@ -209,7 +209,6 @@ How does the IDS-ADS difference change with trials?
 
 ```{r}
 ms_diff <- diffs %>%
-  
   group_by(lab, trial_num) %>%
   multi_boot_standard(col = "diff", na.rm=TRUE)
 
@@ -243,40 +242,66 @@ qplot(age_days, diff, col = lab, group = 1, data = mss_diffs) +
 
 Following suggestions by Alex Cristia, who argued that this is a more straightforward approach and also has been followed in ManyLabs and the RRRs previously. In addition, it doesn't require knowing the full form of the required mixed-effects model (e.g., trial order effects, age x trial order interactions, quadratic habituation, etc.).
 
-Compute effect size for each lab. This analysis follows the recommendation in [Jake Westfall's blogpost](http://jakewestfall.org/blog/index.php/2016/03/25/five-different-cohens-d-statistics-for-within-subject-designs/), which says that "classic" Cohen's $d$ is the difference of the means divided by the pooled standard deviation across conditions. 
+Compute effect size for each lab. This analysis follows the recommendation in [Jake Westfall's blogpost](http://jakewestfall.org/blog/index.php/2016/03/25/five-different-cohens-d-statistics-for-within-subject-designs/), which says that "classic" Cohen's $d$ is the difference of the means divided by the pooled standard deviation across conditions. We also compute $d_z$, the more standard within-subjects analysis, which we expect is more like what we recover from the previous meta-analytic work.
 
 ```{r}
 source("ma_helper.R")
 
 ages <- d %>%
-  group_by(lab, subid) %>%
+  group_by(lab, method, subid) %>%
   summarise(age_days = mean(age_days)) %>%
   summarise(age_days = mean(age_days))
   
-ds <- diffs %>%
-  group_by(lab, method) %>%
-  summarise(d = mean(IDS - ADS, na.rm=TRUE) / 
+ds_classic <- diffs %>%
+  group_by(lab) %>%
+  summarise(d_classic = mean(IDS - ADS, na.rm=TRUE) / 
               sqrt(mean(diag(var(cbind(IDS, ADS), na.rm=TRUE)))), 
             n = length(unique(subid)), 
-            d_var = d_var_calc(n,d)) %>%
+            d_classic_var = d_var_calc(n, d_classic)) %>%
   left_join(ages)
+
+ds <- diffs %>%
+  group_by(lab, method, subid) %>%
+  summarise(d = mean(diff,na.rm = TRUE))%>%
+  group_by(lab) %>%
+  summarise(d_z = mean(d, na.rm=TRUE) / sd(d, na.rm = TRUE), 
+            n = length(unique(subid)), 
+            d_z_var = d_var_calc(n, d_z)) %>%
+  left_join(ages)
+```
+Compare the two effect size measures.
+
+```{r}
+ds_comp <- left_join(ds_classic, ds)
+
+ggplot(ds_comp, aes(x = d_classic, y = d_z)) + 
+  geom_point(aes(size = n)) + 
+  geom_linerange(aes(ymin = d_z - d_z_var, ymax = d_z + d_z_var)) + 
+  geom_errorbarh(aes(xmin = d_classic - d_classic_var, xmax = d_classic + d_classic_var), height = 0) + 
+  geom_smooth(method = "lm", se=FALSE) +
+  geom_abline(lty = 2, slope = 1, intercept = 0) + 
+  ylim(0,2) + 
+  xlim(-.2,2) 
 ```
 
 ```{r}
-ggplot(ds, aes(x = age_days, y = d)) + 
+ggplot(ds, aes(x = age_days, y = d_z)) + 
   geom_point(aes(size = n, col = method)) + 
+  geom_linerange(aes(ymin = d_z - d_z_var, ymax = d_z + d_z_var, col = method)) + 
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
   geom_smooth(method = "lm") + 
   # scale_colour_solarized(name = "", labels = labels, guide = guide) +
   scale_size_continuous(guide = FALSE) +
-  xlab("\nMean Subject Age (Months)") +
-  ylab("Effect Size\n")
+  xlab("Mean Subject Age (Days)") +
+  ylab("Effect Size") + 
+  theme(legend.position= "bottom")
+
 ```
 
 Model with no age moderation.
 
 ```{r}
-mod <- metafor::rma(d ~ 1, vi = d_var, slab = lab, data = ds, method = "REML") 
+mod <- metafor::rma(d_z ~ 1, vi = d_z_var, slab = lab, data = ds, method = "REML") 
 summary(mod)
 ```
 
@@ -311,23 +336,27 @@ qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
     coord_flip() +
     scale_size_continuous(guide = FALSE) +
     scale_colour_solarized() +
-    xlab("") +
-    ylab("Effect Size")
+    xlab("Lab") +
+    ylab("Effect Size") + 
+  theme(legend.position= "bottom")
 
 ```
 
 Model with age moderation.
 
 ```{r}
-mod <- metafor::rma(d ~ age_days, vi = d_var, slab = lab, data = ds, method = "REML") 
+mod <- metafor::rma(d_z ~ age_days, vi = d_z_var, slab = lab, data = ds, method = "REML") 
 summary(mod)
 ```
 
-Model with age x language interaction. (Not shown because right now we only have English data. 
+Model with age x NAE interaction. 
 
 ```{r, eval = FALSE}
-ds$language <- "english"
-mod <- metafor::rma(d ~ age_days * language, vi = d_var, slab = lab, data = ds, method = "REML") 
+ds$language <- "NAE"
+ds$language[ds$lab == "brookes" | ds$lab == "plymouth"] <- "non-NAE"
+ds$language <- factor(ds$language, levels = c("NAE","non-NAE"))
+
+mod <- metafor::rma(d_z ~ language, vi = d_z_var, slab = lab, data = ds, method = "REML") 
 summary(mod)
 ```
 
@@ -335,19 +364,36 @@ summary(mod)
 Model with method moderation.
 
 ```{r}
-mod <- metafor::rma(d ~ method, vi = d_var, slab = lab, data = ds, method = "REML") 
+ds$method <- factor(ds$method, levels = c("single-screen","HPP","eye-tracking"))
+mod <- metafor::rma(d_z ~ method, vi = d_z_var, slab = lab, data = ds, method = "REML") 
 summary(mod)
 ```
 
 # Mixed effects approach
 
-This approach is based on modeling *all* difference scores.
+This approach is based on modeling *all* LTs.
 
-**Decision point**: will we log transform? Take differences? Take log differences or difference of logs?
 
-**These models all need item effects but we don't have item data in the dataframe yet.**
+## Selected model
 
-## Simple models
+```{r}
+
+d_lmer <- d %>%
+  mutate(log_lt = log(looking_time), 
+         age_days = scale(age_days, scale=FALSE), 
+         trial_num = scale(trial_num, scale=FALSE), 
+         language = ifelse(lab %in% c("brookes","plymouth"), "non-NAE", "NAE")) %>%
+  filter(!is.na(log_lt), !is.infinite(log_lt))
+
+mod <- lmer(log_lt ~ method + age_days * trial_num + age_days * language + 
+               + (trial_num | subid) 
+             + (age_days | lab), data = d_lmer)
+
+kable(summary(mod)$coefficients, digits = 2)
+```
+
+
+## Other (simple) models
 
 This is the most basic model:
 
@@ -388,79 +434,4 @@ summary(lmer(diff ~ age_centered * trial_num +
                (age_centered * trial_num | lab) + 
                (trial_num | subid) , data = d_lmer))
 ```
-
-
-<!-- ## IDS Preference across age -->
-
-<!-- #### Linear effect of age -->
-
-<!-- Planned regression: 1 + CentredAge + (1 + Centred Age | lab)   -->
-
-
-<!-- ```{r} -->
-
-<!-- summary(lmer(log_lt_diff ~ 1 + AgeC + (1+ AgeC |lab), data = d_lmer0)) -->
-<!-- ``` -->
-
-<!-- #### Quadratic effect of age -->
-
-<!-- Planned regression: 1 + (CentredAge + CentredAge^2)  + (1 + (Centred Age + CentredAge ^2) "* Trial Type| lab)   -->
-
-<!-- I removed the by lab interaction to aid convergence -->
-
-<!-- ```{r} -->
-<!-- summary(lmer(log_lt_diff ~ 1 + poly(AgeC,2) + (1+ poly(AgeC,2) |lab), data = d_lmer0)) -->
-<!-- ``` -->
-
-<!-- #### Secondary hypothesis tests, e.g trial order and age.  -->
-<!-- We will fit a linear mixed effects model predicting all individual observations, with the structure:   -->
-<!-- log(looking.time) ~ trial.num * stimulus * age + (trial.num * stimulus | subid) + (trial.num * stimulus * age | lab)   -->
-<!-- NB. This is taken from the RRR. Does stimulus here refer to condition or item? I have taken it to refer to condition.   -->
-<!-- Interactions removed to aid convergence. -->
-
-<!-- *mk: why not mixed effects structures in the other models as well?  I think we have 3 sources of random variance we want to model here: random subids nested within random labs, and random stimuli (indivudal items). * -->
-
-<!-- ```{r} -->
-<!-- d_lmer3 <- d %>%  -->
-<!--   filter(trial_type != "Train",  -->
-<!--          looking_time != 0, !is.na(looking_time)) %>% -->
-<!--   mutate(log_lt = log(looking_time), AgeC = (age_days - mean(age_days))/sd(age_days),trial_numC = (trial_num - mean(trial_num))/sd(trial_num))  -->
-<!-- summary(lmer(log_lt ~ 1 + AgeC * trial_type * trial_numC + (1+ trial_type + trial_numC|subid)+ (1+ AgeC + trial_type + trial_numC|lab) , data = d_lmer3)) -->
-<!-- ``` -->
-
-
-
-<!-- ## Christina's Planned Moderator analyses -->
-<!-- These analyses were planned to be by preference score, rather than by interactions. **Iff we are able to include item names in the data files, I would suggest going by interactions instead so that we can account for item effects with regard to, e.g., missing data.**    *cant we measure item effeects on preference scores too, since the items are paired across condition? -mk* -->
-
-<!-- #### Preference by method -->
-<!-- Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.    -->
-<!-- ids.pref ~ method + (1 | lab) -->
-
-<!-- ```{r} -->
-<!-- d_moder1 <- d %>%  -->
-<!--   filter(trial_type != "Train",  -->
-<!--          looking_time != 0, !is.na(looking_time)) %>% -->
-<!--   mutate(log_lt = log(looking_time),AgeC = (age_days - mean(age_days))/sd(age_days)) %>%  -->
-<!--   group_by(subid,trial_type,method,lab,AgeC) %>%  -->
-<!--   summarise(log_lt = mean(log_lt)) %>% -->
-<!--   group_by(subid,method,lab,AgeC) %>%  -->
-<!--   filter(n() == 2) %>% -->
-<!--   summarize(log_lt_diff = log_lt[trial_type == "IDS"] - log_lt[trial_type == "ADS"]) -->
-
-<!-- summary(lmer(log_lt_diff ~ method + (1|lab), data = d_moder1)) -->
-<!-- ``` -->
-
-<!-- #### Preference by method interacting with age -->
-<!-- Note that this analysis is perfectly confounded with lab at the moment, so it will not converge.    -->
-<!-- ids.pref ~ method * age + (1 +age | lab) -->
-
-<!-- ```{r} -->
-
-<!-- summary(lmer(log_lt_diff ~ method*AgeC + (1+AgeC|lab), data = d_moder1)) -->
-<!-- ``` -->
-<!-- ## Melissa's planned 'analysis flexiblity' analysis -->
-<!-- The general idea/approach is to specify a generative model of data inclusion (e.g. select subids to include, trials to include, lt windows to analyze), data analysis (preference vs. difference-from-chance, t test, etc., more things I haven't thought of), and optional stopping, and then to do some simulations of fitting this model to each lab maximizing effect size (essentially simulating 'worst case', intentional p-hacking) as well as some more limited models that e.g. select windows of analysis after data collection, stop early, drop participants, etc in a less nefarious way. -->
-
-<!-- If we have interesting moderator findings, it would also be nice to see e.g. what kinds of sensible measurements you can make on standardized large datasets that you might **not** be able to do on heterogeneous data -->
 
