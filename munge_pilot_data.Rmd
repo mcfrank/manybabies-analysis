@@ -10,7 +10,7 @@ highlight: tango
 theme: spacelab
 ---
 
-This script will munge all data and produce an output file for processing.
+This script will munge all data and produce an output file for processing. Note that much of this set of mechanics will be different in the full analysis, because we are now asking for data in a particular template format. So the preprocessing scripts will deal with getting from idiosynratic formats to *that* format.
 
 ```{r Preliminaries, results = "hide", message = FALSE}
 options(dplyr.width = Inf)
@@ -49,7 +49,7 @@ all_data <- dir(raw_data_path, pattern="*.txt") %>%
 
 Now extract trial numbers and match with stimuli.
 
-Some items to be fixed:
+Some items to be fixed in the real data analysis:
 
 * Currently we're not actually matching stimuli to trials (this will require parsing eye-tracker XML output)
 * We're missing trial ADS-7; that's a (major) oversight from the experimental setup. 
@@ -157,12 +157,27 @@ gonzalez_data <- suppressWarnings(read_csv("pilot/gonzalez/long_data.csv",
   select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
 ```
 
+## Gervain data
+
+
+```{r}
+gervain_data <- suppressWarnings(read_csv("pilot/gervain/Trials.csv", 
+                                           col_types = cols())) %>%
+  left_join(suppressWarnings(read_csv("pilot/gervain/Participants.csv", 
+                                           col_types = cols()))) %>%
+  mutate(lab = "lpp-paris", 
+         method = "HPP",
+         trial_num = floor((trial_num+1)/2)) %>%
+  select(lab, method, subid, age_days, trial_type, trial_num, looking_time)
+```
+
+
 ## Merge all data 
 
 This is what the eventual data frame looks like:
 
 ```{r}
-d <- bind_rows(floccia_data, hamlin_data, frank_data, gonzalez_data)
+d <- bind_rows(floccia_data, hamlin_data, frank_data, gonzalez_data, gervain_data)
 kable(head(d))
 ```
 
