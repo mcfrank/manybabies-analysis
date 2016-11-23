@@ -14,10 +14,6 @@ This document shows an analysis of MB1 pilot data for purposes of procedural and
 
 Please forgive errors, omissions, lack of clearly labeled axes, etc. This document was produced quickly to provide an initial guide for decision-making. 
 
-# Decision points
-
-There are many decision-points that need to be discussed throughout. 
-
 **Data formatting**: Data upload script plus templates are [here](https://docs.google.com/document/d/1SqUJIwvswVa2-8W_ijJBIO2NE9AR7FI1Q9DT15vWlZE/edit?usp=drive_web). They are designed to make merging demographic data easy. Please take a look.
 
 **Exclusion criteria**: Are listed in [the manuscript](https://docs.google.com/document/d/1kv3zZ2ylKHlfu779Xw8DaKxUEBHAa56B-4sv-GRvuBU/edit):
@@ -30,19 +26,13 @@ Participants must be:
 Trials must be:
 - longer than 2s (to allow viewing of the stimulus)
 
-
-Decision points:
-
-- Any other exclusions?
-- Use of a meta-analytic model or a mixed-effects model?
-- How to compute standardized effect size (see the relevant section)
-- Any procedural modifications?
+The goal of this document is to provide a fully implemented draft of the analysis, conforming to the details of the specification in the manuscript. We will pre-register this document along with the manuscript, but the manuscript is definitive. For example, some aspects of the analysis were not possible using the pilot data and have not been implemented here. We expect there to be some minor but significant changes to the analysis once we have data from the full study (for example, inclusion of item effects). 
 
 # Analytic Preliminaries
 
 ```{r Preliminaries, results = "hide", message = FALSE}
 options(dplyr.width = Inf)
-knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache = TRUE)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache = FALSE)
 library(tidyverse)
 library(knitr)
 library(langcog)
@@ -52,10 +42,15 @@ library(lme4)
 theme_set(theme_bw())
 ```
 
-**NOTE**: Loading data computed in `munge_pilot_data.Rmd`.
+Loading data that were initially parsed in `munge_pilot_data.Rmd`. Add language predictor by hand (this will of course be added programmatically in the final dataset, from the `labs` sheet). 
 
 ```{r}
 d <- suppressWarnings(read_csv("processed_data/pilot_data.csv", col_types = cols()))
+
+# add NAE by hand for now
+d$language <- "NAE"
+d$language[d$lab %in% c("brookes","plymouth","lpp-paris")] <- "non-NAE"
+d$language <- factor(d$language, levels = c("NAE","non-NAE"))
 ```
 
 How many participants in each group?
@@ -66,17 +61,17 @@ d %>%
   distinct %>%
   group_by(lab) %>%
   summarise(n = n(), 
-            age_months = mean(age_days)/30.3) %>%
+            age_months = mean(age_days, na.rm=TRUE)/30.3) %>%
   kable(digits = 1)
 ```
 
 ## Exclusions
 
-This is an important decision-point. At least we want to exclude:
+No demographic exclusions are implemented in this section. 
 
-- Children with no looking time
-- Trials with no looking time 
-- Trials with looking time below 2s - QUESTION: do we want to exclude for less than 2s _trial time_ or _looking time_? 
+We exlude trials with looking time below 2s.
+
+We also (later) will exclude children who do not have one pair of included trials (one matched set of IDS/ADS)
 
 ```{r}
 lt_totals <- d %>%
@@ -120,7 +115,7 @@ qplot(looking_time, fill = lab, facets = ~ lab, binwidth = 1, data = d) +
   xlab("Looking time (s)")
 ```
 
-Stanford has a large number of 2s looking times because that's the lookaway from the tracker. So when a child isn't looking at all, they get a 2s. *How should we deal with this?*
+Next, age analysis. 
 
 ```{r}
 qplot(age_days, looking_time, col = lab, data = d) + 
@@ -152,7 +147,6 @@ ggplot(d, aes(x = looking_time)) +
   facet_wrap(~trial_num) + 
   xlim(c(0,30))
 ```
-
 
 Plot means. Note that this graph has survivorship bias -- namely, those observations later in the graph represent kids that had more trials. 
 
@@ -201,7 +195,7 @@ diffs %>%
               kable(digits = 2)
 ```
 
-Stanford data are almost all missing! In hindsight, kids were old, the eye-tracker didn't pick them up, looks were very short, etc. 
+Stanford data are almost all missing! In hindsight, kids were old, the eye-tracker didn't pick them up, looks were very short, etc. LPP-Paris's HPP procedure also resulted in significant missing data but this is only a very small number of kids.
 
 # IDS-ADS difference patterns
 
@@ -209,7 +203,7 @@ How does the IDS-ADS difference change with trials?
 
 ```{r}
 ms_diff <- diffs %>%
-  group_by(lab, trial_num) %>%
+  group_by(lab, language, trial_num) %>%
   multi_boot_standard(col = "diff", na.rm=TRUE)
 
 ggplot(ms_diff, aes(x = trial_num, y = mean)) +
@@ -221,13 +215,13 @@ ggplot(ms_diff, aes(x = trial_num, y = mean)) +
   geom_hline(yintercept = 0, lty = 2)
 ```
 
-Brookes and Stanford both have a number of trials wehre there is essentially no data to estimate. In contrast, if anything, UBC shows hints of a preference by the end of the study, with longer looks all throughout (and much younger babies). 
+Brookes and Stanford both have a number of trials where there is essentially no data to estimate. In contrast, if anything, UBC shows hints of a preference by the end of the study, with longer looks all throughout (and much younger babies). 
 
 How does difference change with age? (by subject) 
 
 ```{r}
 mss_diffs <- diffs %>%
-  group_by(lab, subid) %>%
+  group_by(lab, language, subid) %>%
   summarise(age_days = mean(age_days), 
             diff = mean(diff, na.rm=TRUE))
 
@@ -243,6 +237,8 @@ qplot(age_days, diff, col = lab, group = 1, data = mss_diffs) +
 Following suggestions by Alex Cristia, who argued that this is a more straightforward approach and also has been followed in ManyLabs and the RRRs previously. In addition, it doesn't require knowing the full form of the required mixed-effects model (e.g., trial order effects, age x trial order interactions, quadratic habituation, etc.).
 
 Compute effect size for each lab. This analysis follows the recommendation in [Jake Westfall's blogpost](http://jakewestfall.org/blog/index.php/2016/03/25/five-different-cohens-d-statistics-for-within-subject-designs/), which says that "classic" Cohen's $d$ is the difference of the means divided by the pooled standard deviation across conditions. We also compute $d_z$, the more standard within-subjects analysis, which we expect is more like what we recover from the previous meta-analytic work.
+
+We will be using $d_z$ in the final meta-analysis. 
 
 ```{r}
 source("ma_helper.R")
@@ -284,13 +280,16 @@ ggplot(ds_comp, aes(x = d_classic, y = d_z)) +
   xlim(-.2,2) 
 ```
 
+Adopting $d_z$, plot by age and method. 
+
 ```{r}
 ggplot(ds, aes(x = age_days, y = d_z)) + 
   geom_point(aes(size = n, col = method)) + 
-  geom_linerange(aes(ymin = d_z - d_z_var, ymax = d_z + d_z_var, col = method)) + 
+  geom_linerange(aes(ymin = d_z - 1.96 * sqrt(d_z_var), 
+                     ymax = d_z + 1.96 * sqrt(d_z_var), col = method)) + 
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
   geom_smooth(method = "lm") + 
-  # scale_colour_solarized(name = "", labels = labels, guide = guide) +
+  scale_colour_solarized() +
   scale_size_continuous(guide = FALSE) +
   xlab("Mean Subject Age (Days)") +
   ylab("Effect Size") + 
@@ -328,14 +327,16 @@ forest_data <- data.frame(effects = as.numeric(mod$yi.f),
 qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
         geom = "linerange",
         data = forest_data) +
-    geom_point(aes(y = effects, size = inverse_vars, col = method)) +
-    geom_pointrange(aes(x = lab, y = estimate,
-                               ymin = estimate.cil, ymax = estimate.cih),
-                    pch = 17) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
-    coord_flip() +
-    scale_size_continuous(guide = FALSE) +
-    scale_colour_solarized() +
+  geom_point(aes(y = effects, size = inverse_vars, col = method)) +
+  geom_linerange(aes(ymin = effects - sqrt(variances)*1.96, 
+                     ymax = effects + sqrt(variances)*1.96)) +
+  # geom_pointrange(aes(x = lab, y = estimate,
+  #                            ymin = estimate.cil, ymax = estimate.cih),
+  #                 pch = 17) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
+  coord_flip() +
+  scale_size_continuous(guide = FALSE) +
+  scale_colour_solarized() +
     xlab("Lab") +
     ylab("Effect Size") + 
   theme(legend.position= "bottom")
@@ -345,21 +346,18 @@ qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
 Model with age moderation.
 
 ```{r}
-mod <- metafor::rma(d_z ~ age_days, vi = d_z_var, slab = lab, data = ds, method = "REML") 
+mod <- metafor::rma(d_z ~ scale(age_days, scale=FALSE), 
+                    vi = d_z_var, slab = lab, data = ds, method = "REML") 
 summary(mod)
 ```
 
-Model with age x NAE interaction. 
+Model with language effect.
 
 ```{r, eval = FALSE}
-ds$language <- "NAE"
-ds$language[ds$lab == "brookes" | ds$lab == "plymouth"] <- "non-NAE"
-ds$language <- factor(ds$language, levels = c("NAE","non-NAE"))
-
-mod <- metafor::rma(d_z ~ language, vi = d_z_var, slab = lab, data = ds, method = "REML") 
+mod <- metafor::rma(d_z ~ language, vi = d_z_var, 
+                    slab = lab, data = ds, method = "REML") 
 summary(mod)
 ```
-
 
 Model with method moderation.
 
@@ -392,6 +390,17 @@ mod <- lmer(log_lt ~ trial_type * method + age_days * trial_num + trial_type * a
 kable(summary(mod)$coefficients, digits = 2)
 ```
 
+Corresponding scatter plot.
+
+```{r}
+qplot(age_days, diff, col = language, group = language, data = mss_diffs) + 
+  geom_smooth(method="lm") + 
+  geom_hline(yintercept = 0, lty = 2) + 
+  xlab("Age (days)") + 
+  ylab("IDS preference (s)") + 
+  scale_color_solarized() +
+  theme(legend.position= "bottom") 
+```
 
 ## Other (simple) models
 
