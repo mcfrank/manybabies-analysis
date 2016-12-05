@@ -38,6 +38,7 @@ library(knitr)
 library(langcog)
 library(metafor)
 library(lme4)
+library(lmerTest)
 
 theme_set(theme_bw())
 ```
@@ -380,14 +381,19 @@ d_lmer <- d %>%
   mutate(log_lt = log(looking_time), 
          age_days = scale(age_days, scale=FALSE), 
          trial_num = scale(trial_num, scale=FALSE), 
-         language = ifelse(lab %in% c("brookes","plymouth"), "non-NAE", "NAE")) %>%
+         language = ifelse(lab %in% c("brookes","plymouth", "lpp-paris"), 
+                           "non-NAE", "NAE"), 
+         method = factor(method, 
+                         levels = c("single-screen","HPP",
+                                    "eye-tracking"))) %>%
   filter(!is.na(log_lt), !is.infinite(log_lt))
 
-mod <- lmer(log_lt ~ trial_type * method + age_days * trial_num + trial_type * age_days * language + 
-               + (trial_num | subid) 
-             + (age_days | lab), data = d_lmer)
+mod <- lmer(log_lt ~ trial_type * method + age_days * trial_num + 
+            trial_type * age_days * language + 
+            (trial_num | subid) +
+            (age_days | lab), data = d_lmer)
 
-kable(summary(mod)$coefficients, digits = 2)
+kable(summary(mod)$coefficients, digits = 3)
 ```
 
 Corresponding scatter plot.
@@ -399,48 +405,65 @@ qplot(age_days, diff, col = language, group = language, data = mss_diffs) +
   xlab("Age (days)") + 
   ylab("IDS preference (s)") + 
   scale_color_solarized() +
-  theme(legend.position= "bottom") 
+  theme(legend.position = "bottom") 
 ```
 
-## Other (simple) models
+## Second session model
 
-This is the most basic model:
+Not shown because we have no second-session babies.
+
+## Missing data model
+
+This model also needs a second-session predictor. 
+
+Make sure that there is a NA for every trial where a child did not contribute. This was surprisingly tricky and should be checked. 
 
 ```{r}
-d_lmer <- diffs %>% 
-  filter(!is.na(diff)) %>%
-  mutate(age_centered = scale(age_days))
+missing_trials <- d %>%
+  select(-looking_time, -total_looking_time, trial_num) %>%
+  group_by(lab, method, subid, age_days) %>%
+  distinct() 
 
-summary(lmer(diff ~ 1 + 
-               (1 | lab) + 
-               (1 | subid) , data = d_lmer))
+expanded_missing_trials <- missing_trials[rep(1:nrow(missing_trials), 
+                                              times=16),] %>%
+  arrange(subid, lab) %>%
+  group_by(subid, lab) %>% 
+  mutate(trial_num = c(1:8, 1:8), 
+         trial_type = factor(c(rep("IDS",8),rep("ADS",8))))
+  
+d_lmer_missing <- full_join(expanded_missing_trials, d) %>%
+  ungroup %>%
+   mutate(missing_lt = is.na(looking_time),
+          age_days_s = scale(age_days, scale=FALSE), 
+          trial_num_s = scale(trial_num, scale=FALSE), 
+          language = ifelse(lab %in% c("brookes","plymouth", "lpp-paris"), 
+                            "non-NAE", "NAE"))
+
+d_lmer_missing$method <- factor(d_lmer_missing$method, 
+                                levels = c("single-screen","HPP",
+                                           "eye-tracking"))
+
+missing_mod <- glmer(missing_lt ~  method * age_days_s + 
+                       method * trial_num_s + 
+                       age_days_s * trial_num_s + 
+                       (1 | lab), 
+                     family = "binomial", 
+                     data = d_lmer_missing)
+
+kable(summary(missing_mod)$coefficients, digits = 3)
 ```
-
-and age effects. 
+And the corresponding plot. 
 
 ```{r}
-summary(lmer(diff ~ age_centered + 
-               (age_centered | lab) + 
-               (1 | subid) , data = d_lmer))
+ms <- d_lmer_full %>%
+  mutate(age_grp = cut(age_days, c(0,3,6,9,12,15)*30.3)) %>%
+  group_by(trial_num, age_grp) %>%
+  summarise(p_missing = mean(missing_lt, na.rm=TRUE))
+
+qplot(trial_num, p_missing, col = age_grp, geom = "line", data = ms) + 
+  ylab("Probability of missing observations") + 
+  xlab("Trial number") + 
+  scale_color_solarized() + 
+  ylim(c(0,1))
+
 ```
-
-Neither of these models take into account the shape of the habituation curve or how preference might manifest across it. 
-
-## More complete model
-
-Add trial number X age interaction.
-
-```{r}
-summary(lmer(diff ~ age_centered * trial_num + 
-               (age_centered * trial_num | lab) + 
-               (trial_num | subid) , data = d_lmer))
-```
-
-and the quadratic version of that analysis. 
-
-```{r}
-summary(lmer(diff ~ age_centered * trial_num + 
-               (age_centered * trial_num | lab) + 
-               (trial_num | subid) , data = d_lmer))
-```
-
