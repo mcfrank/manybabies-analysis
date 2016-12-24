@@ -39,6 +39,7 @@ library(langcog)
 library(metafor)
 library(lme4)
 library(lmerTest)
+library(forcats)
 
 theme_set(theme_bw())
 ```
@@ -58,11 +59,12 @@ How many participants in each group?
 
 ```{r}
 d %>%
-  group_by(lab, age_days, subid) %>%
+  group_by(lab, age_days, method, subid) %>%
   distinct %>%
   group_by(lab) %>%
   summarise(n = n(), 
-            age_months = mean(age_days, na.rm=TRUE)/30.3) %>%
+            age_months = mean(age_days, na.rm=TRUE)/30.3,
+            method = method[1]) %>%
   kable(digits = 1)
 ```
 
@@ -318,19 +320,33 @@ forest_data <- data.frame(effects = as.numeric(mod$yi.f),
          effects.cih = effects +
            qnorm(alpha / 2, lower.tail = FALSE) * sqrt(variances),
          estimate = as.numeric(f),
-         lab = names(f),
+         lab = factor(names(f)),
          estimate.cil = p$ci.lb,
          estimate.cih = p$ci.ub,
          inverse_vars = 1/variances,
          identity = 1) %>%
   left_join(ds) 
 
+# Add meta-analytic estimate
+forest_data <- bind_rows(forest_data,
+                         data_frame(lab = "Meta-analytic estimate",
+                                    method = "",
+                                    effects = summary(mod)$b[1],
+                                    effects.cil = summary(mod)$ci.lb,
+                                    effects.cih = summary(mod)$ci.ub)) %>%
+  mutate(method = fct_rev(fct_relevel(method, "")))
+
+# plot
 qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
         geom = "linerange",
         data = forest_data) +
-  geom_point(aes(y = effects, size = inverse_vars, col = method)) +
+  geom_point(data = filter(forest_data, lab != "Meta-analytic estimate"), 
+             aes(y = effects, size = inverse_vars, col = method)) +
   geom_linerange(aes(ymin = effects - sqrt(variances)*1.96, 
                      ymax = effects + sqrt(variances)*1.96)) +
+  geom_point(data = filter(forest_data, lab == "Meta-analytic estimate"), 
+             pch = 5) +
+  facet_grid(method~., scales= 'free', space='free')+ 
   # geom_pointrange(aes(x = lab, y = estimate,
   #                            ymin = estimate.cil, ymax = estimate.cih),
   #                 pch = 17) +
@@ -364,10 +380,77 @@ Model with method moderation.
 
 ```{r}
 ds$method <- factor(ds$method, levels = c("single-screen","HPP","eye-tracking"))
-mod <- metafor::rma(d_z ~ method, vi = d_z_var, slab = lab, data = ds, method = "REML") 
-summary(mod)
+method_mod <- metafor::rma(d_z ~ method, vi = d_z_var, slab = lab, data = ds, method = "REML") 
+summary(method_mod)
 ```
+## Forest plot with method mini-models
 
+```{r}
+intercept_mod <- metafor::rma(d_z ~ 1, vi = d_z_var, slab = lab, data = ds, method = "REML") 
+f <- fitted(intercept_mod)
+p <- predict(intercept_mod)
+
+alpha <- .05
+
+forest_data <- data.frame(effects = as.numeric(mod$yi.f),
+                          variances = mod$vi.f) %>%
+  mutate(effects.cil = effects -
+           qnorm(alpha / 2, lower.tail = FALSE) * sqrt(variances),
+         effects.cih = effects +
+           qnorm(alpha / 2, lower.tail = FALSE) * sqrt(variances),
+         estimate = as.numeric(f),
+         lab = factor(names(f)),
+         estimate.cil = p$ci.lb,
+         estimate.cih = p$ci.ub,
+         inverse_vars = 1/variances,
+         identity = 1) %>%
+  left_join(ds) 
+
+mf <- fitted(method_mod) 
+mp <- predict(method_mod, 
+              newmods = cbind(c(1,1,1),c(0,0,1), c(0,1,0)), 
+              intercept = FALSE)
+ 
+ 
+# Add meta-analytic estimate
+forest_data <- bind_rows(forest_data,
+                         data_frame(lab = "Meta-analytic estimate",
+                                    method = "",
+                                    effects = summary(mod)$b[1],
+                                    effects.cil = summary(mod)$ci.lb,
+                                    effects.cih = summary(mod)$ci.ub), 
+                         data_frame(lab = "Meta-analytic estimate",
+                                    method = c("HPP","eye-tracking",
+                                               "single-screen"),
+                                    effects = mp$pred,
+                                    effects.cil = mp$ci.lb,
+                                    effects.cih = mp$ci.ub)) %>%
+  mutate(method = fct_rev(fct_relevel(method, "")), 
+         lab = fct_relevel(lab, "Meta-analytic estimate"))
+
+# plot
+qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
+        geom = "linerange",
+        data = forest_data) +
+  geom_point(data = filter(forest_data, lab != "Meta-analytic estimate"), 
+             aes(y = effects, size = inverse_vars, col = method)) +
+  geom_linerange(aes(ymin = effects - sqrt(variances)*1.96, 
+                     ymax = effects + sqrt(variances)*1.96)) +
+  geom_point(data = filter(forest_data, lab == "Meta-analytic estimate"), 
+             pch = 5) +
+  facet_grid(method~., scales= 'free', space='free')+ 
+  # geom_pointrange(aes(x = lab, y = estimate,
+  #                            ymin = estimate.cil, ymax = estimate.cih),
+  #                 pch = 17) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
+  coord_flip() +
+  scale_size_continuous(guide = FALSE) +
+  scale_colour_solarized() +
+    xlab("Lab") +
+    ylab("Effect Size") + 
+  theme(legend.position= "bottom")
+
+```
 # Mixed effects approach
 
 This approach is based on modeling *all* LTs.
