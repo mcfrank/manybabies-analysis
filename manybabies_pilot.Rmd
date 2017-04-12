@@ -2,12 +2,12 @@
 title: "ManyBabies 1: Pilot Data Analysis"
 author: "ManyBabies Analysis Group (inc. Mike Frank, Hugh Rabagliati, Melissa Kline)"
 output:
-  html_document:
-    toc: true
-    number_sections: true
-    code_folding: hide
-    highlight: tango
-    theme: spacelab
+html_document:
+toc: true
+number_sections: true
+code_folding: hide
+highlight: tango
+theme: spacelab
 ---
 
 This document shows an analysis of MB1 pilot data for purposes of procedural and analytic decision-making. It includes analysis of demographics and looking times, as well as condition differences. 
@@ -41,7 +41,7 @@ library(lme4)
 library(lmerTest)
 library(forcats)
 
-theme_set(theme_bw())
+theme_set(ggthemes::theme_few())
 ```
 
 Loading data that were initially parsed in `munge_pilot_data.Rmd`. Add language predictor by hand (this will of course be added programmatically in the final dataset, from the `labs` sheet). 
@@ -87,13 +87,25 @@ d <- d %>%
          !is.na(total_looking_time), 
          trial_type %in% c("IDS","ADS")) %>%
   mutate(looking_time = ifelse(looking_time < 2, NA, looking_time))
-  
+
 total_trials <- d %>%
   group_by(lab, subid) %>%
-  summarise(n_trials = sum(!is.na(looking_time))) 
+  summarise(n_trials = sum(!is.na(looking_time)), 
+            age_days = age_days[1]) 
 
-qplot(n_trials, fill = lab, data= total_trials)
+qplot(n_trials, fill = lab, data= total_trials, binwidth = 2) + 
+  ylab("Number of Children") + xlab("Number of Trials Contributed")
 ```
+
+Compare trials to age. 
+
+```{r}
+qplot(age_days, n_trials, col = lab, data= total_trials) + 
+  ylab("Number of Trials") + xlab("Age (days)") + 
+  geom_smooth(method="lm", aes(group = 1))
+
+```
+
 
 ## Demographics
 
@@ -195,7 +207,7 @@ But: `r round(mean(is.na(diffs$diff)), digits = 2)` of LTs have missing data. Th
 diffs %>%
   group_by(lab) %>%
   summarise(missing = mean(is.na(diff))) %>%
-              kable(digits = 2)
+  kable(digits = 2)
 ```
 
 Stanford data are almost all missing! In hindsight, kids were old, the eye-tracker didn't pick them up, looks were very short, etc. LPP-Paris's HPP procedure also resulted in significant missing data but this is only a very small number of kids.
@@ -210,10 +222,10 @@ ms_diff <- diffs %>%
   multi_boot_standard(col = "diff", na.rm=TRUE)
 
 ggplot(ms_diff, aes(x = trial_num, y = mean)) +
-         geom_smooth(se = FALSE, span = 2) + 
+  geom_smooth(se = FALSE, span = 2) + 
   facet_wrap(~lab) + 
   geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
-                 position = position_dodge(width= .1)) +
+                  position = position_dodge(width= .1)) +
   ylab("IDS preference (s)") + 
   geom_hline(yintercept = 0, lty = 2)
 ```
@@ -233,7 +245,7 @@ qplot(age_days, diff, col = lab, group = 1, data = mss_diffs) +
   geom_hline(yintercept = 0, lty = 2) + 
   ylab("IDS preference (s)") 
 ```
-         
+
 
 # Meta-analytic approach
 
@@ -250,7 +262,7 @@ ages <- d %>%
   group_by(lab, method, subid) %>%
   summarise(age_days = mean(age_days)) %>%
   summarise(age_days = mean(age_days))
-  
+
 ds_classic <- diffs %>%
   group_by(lab) %>%
   summarise(d_classic = mean(IDS - ADS, na.rm=TRUE) / 
@@ -259,19 +271,40 @@ ds_classic <- diffs %>%
             d_classic_var = d_var_calc(n, d_classic)) %>%
   left_join(ages)
 
-ds <- diffs %>%
+ds_da <- diffs %>%
   group_by(lab, method, subid) %>%
-  summarise(d = mean(diff,na.rm = TRUE))%>%
+  summarise(IDS = mean(IDS, na.rm=TRUE),
+            ADS = mean(ADS, na.rm=TRUE)) %>%
+  summarise(d_a = mean(IDS - ADS, na.rm=TRUE) / 
+              (sd(ADS, na.rm=TRUE) + sd(IDS, na.rm=TRUE))/2, 
+            n = n(), 
+            d_a_var = d_var_calc(n, d_a)) %>%
+  left_join(ages)
+
+ds_zs <- diffs %>%
+  group_by(lab, method, subid) %>%
+  summarise(d = mean(IDS, na.rm = TRUE) - mean(ADS, na.rm=TRUE))%>%
+  group_by(lab) %>%
+  summarise(d_zs = mean(d, na.rm=TRUE) / sd(d, na.rm = TRUE), 
+            n = length(unique(subid)), 
+            d_zs_var = d_var_calc(n, d_zs)) %>%
+  left_join(ages) 
+
+ds_zt <- diffs %>%
+  group_by(lab, method, subid) %>%
+  summarise(d = mean(diff, na.rm = TRUE))%>%
   group_by(lab) %>%
   summarise(d_z = mean(d, na.rm=TRUE) / sd(d, na.rm = TRUE), 
             n = length(unique(subid)), 
             d_z_var = d_var_calc(n, d_z)) %>%
   left_join(ages)
 ```
-Compare the two effect size measures.
+Compare the four effect size measures.
 
 ```{r}
-ds_comp <- left_join(ds_classic, ds)
+ds_comp <- left_join(ds_classic, ds_da) %>%
+  left_join(ds_zs) %>%
+  left_join(ds_zt)
 
 ggplot(ds_comp, aes(x = d_classic, y = d_z)) + 
   geom_point(aes(size = n)) + 
@@ -281,12 +314,47 @@ ggplot(ds_comp, aes(x = d_classic, y = d_z)) +
   geom_abline(lty = 2, slope = 1, intercept = 0) + 
   ylim(0,2) + 
   xlim(-.2,2) 
+
+ggplot(ds_comp, aes(x = d_z, y = d_a)) + 
+  geom_point(aes(size = n)) + 
+  geom_errorbarh(aes(xmin = d_z - d_z_var, xmax = d_z + d_z_var), height = 0) + 
+  geom_linerange(aes(ymin = d_a - d_a_var, ymax = d_a + d_a_var)) + 
+  geom_smooth(method = "lm", se=FALSE) +
+  geom_abline(lty = 2, slope = 1, intercept = 0) 
+
+ggplot(ds_comp, aes(x = d_z, y = d_zs)) + 
+  geom_point(aes(size = n)) + 
+  geom_errorbarh(aes(xmin = d_z - d_z_var, xmax = d_z + d_z_var), height = 0) + 
+  geom_linerange(aes(ymin = d_zs - d_zs_var, ymax = d_zs + d_zs_var)) + 
+  geom_smooth(method = "lm", se=FALSE) +
+  geom_abline(lty = 2, slope = 1, intercept = 0) 
 ```
 
-Adopting $d_z$, plot by age and method. 
+Let's look at $d_{z_{trials}}$ vs $d_{z_{subjects}}$.
 
 ```{r}
-ggplot(ds, aes(x = age_days, y = d_z)) + 
+sub_diffs <- diffs %>%
+  group_by(lab, method, subid, age_days) %>%
+  summarise(d_trials = mean(diff, na.rm = TRUE), 
+            d_subs = mean(IDS, na.rm=TRUE) - mean(ADS, na.rm=TRUE)) %>%
+  ungroup() %>%
+  mutate(older = factor(age_days > median(age_days, na.rm=TRUE), 
+                        levels = c(FALSE, TRUE), 
+                        labels = c("younger","older")))
+
+ggplot(sub_diffs, aes(x = d_trials, y = d_subs, col = age_days)) + 
+  geom_point() + 
+  geom_smooth(method="lm") + 
+  geom_abline(lty = 2, slope = 1, intercept = 0) + 
+  facet_grid(.~older) + 
+  ylab("subject-level IDS/ADS difference (s)") + 
+  xlab("trial-level IDS/ADS difference (s)")
+```
+
+Adopting $d_{z_t}$, plot by age and method. 
+
+```{r}
+ggplot(ds_zs, aes(x = age_days, y = d_z)) + 
   geom_point(aes(size = n, col = method)) + 
   geom_linerange(aes(ymin = d_z - 1.96 * sqrt(d_z_var), 
                      ymax = d_z + 1.96 * sqrt(d_z_var), col = method)) + 
@@ -303,7 +371,7 @@ ggplot(ds, aes(x = age_days, y = d_z)) +
 Model with no age moderation.
 
 ```{r}
-mod <- metafor::rma(d_z ~ 1, vi = d_z_var, slab = lab, data = ds, method = "REML") 
+mod <- metafor::rma(d_z ~ 1, vi = d_z_var, slab = lab, data = ds_zt, method = "REML") 
 summary(mod)
 ```
 
@@ -325,7 +393,7 @@ forest_data <- data.frame(effects = as.numeric(mod$yi.f),
          estimate.cih = p$ci.ub,
          inverse_vars = 1/variances,
          identity = 1) %>%
-  left_join(ds) 
+  left_join(ds_zt) 
 
 # Add meta-analytic estimate
 forest_data <- bind_rows(forest_data,
@@ -338,8 +406,8 @@ forest_data <- bind_rows(forest_data,
 
 # plot
 qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
-        geom = "linerange",
-        data = forest_data) +
+      geom = "linerange",
+      data = forest_data) +
   geom_point(data = filter(forest_data, lab != "Meta-analytic estimate"), 
              aes(y = effects, size = inverse_vars, col = method)) +
   geom_linerange(aes(ymin = effects - sqrt(variances)*1.96, 
@@ -354,8 +422,8 @@ qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
   coord_flip() +
   scale_size_continuous(guide = FALSE) +
   scale_colour_solarized() +
-    xlab("Lab") +
-    ylab("Effect Size") + 
+  xlab("Lab") +
+  ylab("Effect Size") + 
   theme(legend.position= "bottom")
 
 ```
@@ -382,6 +450,68 @@ Model with method moderation.
 ds$method <- factor(ds$method, levels = c("single-screen","HPP","eye-tracking"))
 method_mod <- metafor::rma(d_z ~ method, vi = d_z_var, slab = lab, data = ds, method = "REML") 
 summary(method_mod)
+```
+## Forest plot with meta-analytic model 
+
+```{r}
+intercept_mod <- metafor::rma(d_z ~ 1, vi = d_z_var, slab = lab, data = ds, method = "REML") 
+f <- fitted(intercept_mod)
+p <- predict(intercept_mod)
+
+alpha <- .05
+
+forest_data <- data.frame(effects = as.numeric(mod$yi.f),
+                          variances = mod$vi.f) %>%
+  mutate(effects.cil = effects -
+           qnorm(alpha / 2, lower.tail = FALSE) * sqrt(variances),
+         effects.cih = effects +
+           qnorm(alpha / 2, lower.tail = FALSE) * sqrt(variances),
+         estimate = as.numeric(f),
+         lab = factor(names(f)),
+         estimate.cil = p$ci.lb,
+         estimate.cih = p$ci.ub,
+         inverse_vars = 1/variances,
+         identity = 1) %>%
+  left_join(ds) 
+
+mf <- fitted(method_mod) 
+mp <- predict(method_mod, 
+              newmods = cbind(c(1,1,1),c(0,0,1), c(0,1,0)), 
+              intercept = FALSE)
+
+
+# Add meta-analytic estimate
+forest_data <- bind_rows(forest_data,
+                         data_frame(lab = "Meta-analytic estimate",
+                                    method = "",
+                                    effects = summary(mod)$b[1],
+                                    effects.cil = summary(mod)$ci.lb,
+                                    effects.cih = summary(mod)$ci.ub)) %>%
+  mutate(method = fct_rev(fct_relevel(method, "")), 
+         lab = fct_relevel(lab, "Meta-analytic estimate"))
+
+# plot
+qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
+      geom = "linerange",
+      data = forest_data) +
+  geom_linerange(aes(ymin = effects - sqrt(variances)*1.96, 
+                     ymax = effects + sqrt(variances)*1.96)) +
+  geom_point(data = filter(forest_data, lab != "Meta-analytic estimate"), 
+             aes(y = effects, size = inverse_vars, col = method)) +
+  geom_point(data = filter(forest_data, lab == "Meta-analytic estimate"), 
+             pch = 5) +
+  # facet_grid(method~., scales= 'free', space='free')+ 
+  # geom_pointrange(aes(x = lab, y = estimate,
+  #                            ymin = estimate.cil, ymax = estimate.cih),
+  #                 pch = 17) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
+  coord_flip() +
+  scale_size_continuous(guide = FALSE) +
+  scale_colour_solarized() +
+  xlab("Lab") +
+  ylab("Effect Size") + 
+  theme(legend.position= "bottom")
+
 ```
 ## Forest plot with method mini-models
 
@@ -410,8 +540,8 @@ mf <- fitted(method_mod)
 mp <- predict(method_mod, 
               newmods = cbind(c(1,1,1),c(0,0,1), c(0,1,0)), 
               intercept = FALSE)
- 
- 
+
+
 # Add meta-analytic estimate
 forest_data <- bind_rows(forest_data,
                          data_frame(lab = "Meta-analytic estimate",
@@ -430,8 +560,8 @@ forest_data <- bind_rows(forest_data,
 
 # plot
 qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
-        geom = "linerange",
-        data = forest_data) +
+      geom = "linerange",
+      data = forest_data) +
   geom_point(data = filter(forest_data, lab != "Meta-analytic estimate"), 
              aes(y = effects, size = inverse_vars, col = method)) +
   geom_linerange(aes(ymin = effects - sqrt(variances)*1.96, 
@@ -446,11 +576,12 @@ qplot(lab, effects, ymin = effects.cil, ymax = effects.cih,
   coord_flip() +
   scale_size_continuous(guide = FALSE) +
   scale_colour_solarized() +
-    xlab("Lab") +
-    ylab("Effect Size") + 
+  xlab("Lab") +
+  ylab("Effect Size") + 
   theme(legend.position= "bottom")
 
 ```
+
 # Mixed effects approach
 
 This approach is based on modeling *all* LTs.
@@ -458,12 +589,15 @@ This approach is based on modeling *all* LTs.
 
 ## Selected model
 
+Note that this model should also include the term `(method + age * language | item)` but does not because we don't have items coded in the pilot data. 
+
+
 ```{r}
 
 d_lmer <- d %>%
   mutate(log_lt = log(looking_time), 
          age_days = scale(age_days, scale=FALSE), 
-         trial_num = scale(trial_num, scale=FALSE), 
+         trial_num = trial_num - 1, 
          language = ifelse(lab %in% c("brookes","plymouth", "lpp-paris"), 
                            "non-NAE", "NAE"), 
          method = factor(method, 
@@ -471,10 +605,13 @@ d_lmer <- d %>%
                                     "eye-tracking"))) %>%
   filter(!is.na(log_lt), !is.infinite(log_lt))
 
-mod <- lmer(log_lt ~ trial_type * method + age_days * trial_num + 
-            trial_type * age_days * language + 
-            (trial_num | subid) +
-            (age_days | lab), data = d_lmer)
+
+mod <- lmer(log_lt ~ trial_type * method + 
+              trial_type * trial_num + 
+              age_days * trial_num + 
+              trial_type * age_days * language + 
+              (trial_type + trial_num | subid) +
+              (trial_type + age_days | lab), data = d_lmer)
 
 kable(summary(mod)$coefficients, digits = 3)
 ```
@@ -513,14 +650,14 @@ expanded_missing_trials <- missing_trials[rep(1:nrow(missing_trials),
   group_by(subid, lab) %>% 
   mutate(trial_num = c(1:8, 1:8), 
          trial_type = factor(c(rep("IDS",8),rep("ADS",8))))
-  
+
 d_lmer_missing <- full_join(expanded_missing_trials, d) %>%
   ungroup %>%
-   mutate(missing_lt = is.na(looking_time),
-          age_days_s = scale(age_days, scale=FALSE), 
-          trial_num_s = scale(trial_num, scale=FALSE), 
-          language = ifelse(lab %in% c("brookes","plymouth", "lpp-paris"), 
-                            "non-NAE", "NAE"))
+  mutate(missing_lt = is.na(looking_time),
+         age_days_s = scale(age_days, scale=FALSE), 
+         trial_num_s = scale(trial_num, scale=FALSE), 
+         language = ifelse(lab %in% c("brookes","plymouth", "lpp-paris"), 
+                           "non-NAE", "NAE"))
 
 d_lmer_missing$method <- factor(d_lmer_missing$method, 
                                 levels = c("single-screen","HPP",
@@ -550,3 +687,37 @@ qplot(trial_num, p_missing, col = age_grp, geom = "line", data = ms) +
   ylim(c(0,1))
 
 ```
+
+
+
+# Explorations of exclusion rules
+
+```{r}
+ds_excl <- diffs %>%
+  group_by(lab, method, subid) %>%
+  summarise(excl2 = mean(diff, na.rm = TRUE),
+            excl4 = ifelse(sum(!is.na(diff)) > 2, 
+                           mean(diff, na.rm = TRUE), NA),
+            excl6 = ifelse(sum(!is.na(diff)) > 3, 
+                           mean(diff, na.rm = TRUE), NA),
+            excl8 = ifelse(sum(!is.na(diff)) > 4, 
+                           mean(diff, na.rm = TRUE), NA)) %>%
+  gather(exclusion, d, excl2, excl4, excl6, excl8) %>%
+  mutate(exclusion = as.numeric(str_replace(exclusion, "excl",""))) %>%
+  group_by(lab, exclusion) %>%
+  summarise(d_z = mean(d, na.rm=TRUE) / sd(d, na.rm = TRUE), 
+            n = length(unique(subid)), 
+            d_z_var = d_var_calc(n, d_z)) %>%
+  left_join(ages)
+
+ggplot(filter(ds_excl, lab != "lpp-paris"), aes(x = lab, y = d_z)) + 
+  geom_point(aes(size = n)) + 
+  geom_linerange(aes(ymin = d_z - d_z_var, ymax = d_z + d_z_var)) + 
+  coord_flip() + 
+  facet_wrap(~exclusion) + 
+  ylim(c(0,2))+ 
+  geom_hline(yintercept = .5, lty = 3, alpha = .5)+
+  geom_hline(yintercept = 1, lty = 3, alpha = .5) + 
+  geom_hline(yintercept = 1.5, lty = 3, alpha = .5) 
+```
+
