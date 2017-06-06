@@ -9,6 +9,13 @@ Paper draft can be found [here](https://docs.google.com/document/d/1kv3zZ2ylKHlf
 - Design appropriate templates for labs to use for data entry
 - Discuss decisions about plotting and analysis conventions
 
+The biggest issues I see right now are:
+
+- what's the DV? is it looking time? log looking time (generally better, but our measure is bounded at 20s)? IDS pref? if so, calculated how? 
+
+- what's the general model spec. I wrote a bit of text assuming this is mixed effect models (rather than meta analytic models) - I would argue for this because it allows a greater degree of modeling of random effects (e.g., at the child and item levels, not just the lab level) and more modeling of trial-by-trial dynamics. But I am open to other options. 
+
+
 # Discussions pasted from emails
 So it sounds like LT, rather than total trial length, is the consensus from the human coder side :)  
 
