@@ -23,9 +23,11 @@ x$d_calc[x$coder=="Alex Cristia"]<-x$d[x$coder=="Alex Cristia"]
 x$d_var_calc[x$coder=="Alex Cristia"]<-x$d_var[x$coder=="Alex Cristia"]
 summary(x$d_var_calc) #no NAs
 
-library(metafor)
 x$se=sqrt(x$d_var_calc)
 x$w=1/sqrt(x$d_var_calc)
+
+
+library(metafor)
 original=rma.uni(yi=d_calc, sei=se, weights=w,data=x,subset=c(coder=="Alex Cristia"))
 summary(original)
 
@@ -44,8 +46,30 @@ subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
          setting=="Laboratory" & 
          stim_language=="English" & 
          infant_type=="typical" & 
-         dependent_measure=="looking_time")->relevant
-selected=rma.uni(yi=d, sei=se, weights=w,data=relevant)
+         dependent_measure=="looking_time" &
+         mean_age_1>3*30.25 & mean_age_1<15*30.25)->relevant
+selected=rma.uni(yi=d_calc, sei=se, weights=w,data=relevant)
 summary(selected)
+relevant$age.c=relevant$mean_age_1-mean(relevant$mean_age_1,na.rm=T)
+with_age=rma.uni(yi=d_calc, sei=se, weights=w,mods=age.c,data=relevant)
+summary(with_age)
 
+subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
+         speaker!="Child\342\200\231s mother" & speaker != "Unfamiliar male" & 
+         setting=="Laboratory" & 
+         stim_language=="English" & 
+         infant_type=="typical" & 
+         dependent_measure=="looking_time" &
+         mean_age_1>6*30.25 & mean_age_1<9*30.25)->relevant
+selected_6to9=rma.uni(yi=d_calc, sei=se, weights=w,data=relevant)
+summary(selected_6to9)
 
+subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
+         speaker!="Child\342\200\231s mother" & speaker != "Unfamiliar male" & 
+         setting=="Laboratory" & 
+         stim_language=="English" & 
+         infant_type=="typical" & 
+         dependent_measure=="looking_time" &
+         mean_age_1>9*30.25 & mean_age_1<15*30.25)->relevant
+selected_12to15=rma.uni(yi=d_calc, sei=se, weights=w,data=relevant)
+summary(selected_12to15)
