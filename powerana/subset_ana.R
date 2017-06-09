@@ -47,22 +47,21 @@ subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
          stim_language=="English" & 
          infant_type=="typical" & 
          dependent_measure=="looking_time" &
-         mean_age_1>3*30.25 & mean_age_1<15*30.25)->relevant
+         mean_age_1>=3*30.25 & mean_age_1<=15*30.25)->relevant
 selected=rma.uni(yi=d_calc, sei=se, weights=w,data=relevant)
 summary(selected)
+
 relevant$age.c=relevant$mean_age_1-mean(relevant$mean_age_1,na.rm=T)
 with_age=rma.uni(yi=d_calc, sei=se, weights=w,mods=age.c,data=relevant)
 summary(with_age)
 
-subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
-         speaker!="Child\342\200\231s mother" & speaker != "Unfamiliar male" & 
-         setting=="Laboratory" & 
-         stim_language=="English" & 
-         infant_type=="typical" & 
-         dependent_measure=="looking_time" &
-         mean_age_1>6*30.25 & mean_age_1<9*30.25)->relevant
-selected_6to9=rma.uni(yi=d_calc, sei=se, weights=w,data=relevant)
+subset(relevant,  mean_age_1>=6*30.25 & mean_age_1<=9*30.25)->relevanty
+selected_6to9=rma.uni(yi=d_calc, sei=se, weights=w,data=relevanty)
 summary(selected_6to9)
+
+subset(relevant,  mean_age_1>9*30.25 & mean_age_1<=15*30.25)->relevantm
+selected_9to15=rma.uni(yi=d_calc, sei=se, weights=w,data=relevantm)
+summary(selected_9to15)
 
 subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
          speaker!="Child\342\200\231s mother" & speaker != "Unfamiliar male" & 
@@ -70,6 +69,17 @@ subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
          stim_language=="English" & 
          infant_type=="typical" & 
          dependent_measure=="looking_time" &
-         mean_age_1>9*30.25 & mean_age_1<15*30.25)->relevant
-selected_12to15=rma.uni(yi=d_calc, sei=se, weights=w,data=relevant)
-summary(selected_12to15)
+         mean_age_1>15*30.25)->relevanto
+selected_15plus=rma.uni(yi=d_calc, sei=se, weights=w,data=relevanto)
+summary(selected_15plus)
+
+subset(x, speech_type != "Filtered" & speech_type != "Synthesized" &
+         speaker!="Child\342\200\231s mother" & speaker != "Unfamiliar male" & 
+         setting=="Laboratory" & 
+         stim_language=="English" & 
+         infant_type=="typical" & 
+         dependent_measure=="looking_time" &
+         mean_age_1<6*30.25)->relevanto
+selected_6less=rma.uni(yi=d_calc, sei=se, weights=w,data=relevanto)
+summary(selected_6less)
+
